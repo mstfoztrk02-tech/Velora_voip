@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function IntegrationCard({ title, children }) {
   return (
@@ -104,6 +105,7 @@ function DataDisplay({ data, label }) {
 }
 
 export default function IntegrationsPage() {
+  const navigate = useNavigate();
   const [sippyState, setSippyState] = useState({ loading: false, data: null, error: null });
   const [issabelState, setIssabelState] = useState({ loading: false, data: null, error: null });
   const [elevenLabsVoices, setElevenLabsVoices] = useState({ loading: false, data: null, error: null });
@@ -189,6 +191,27 @@ export default function IntegrationsPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
+      <button
+        onClick={() => navigate(-1)}
+        style={{
+          marginBottom: 24,
+          padding: "8px 16px",
+          fontSize: 14,
+          fontWeight: "500",
+          color: "#555",
+          backgroundColor: "#f5f5f5",
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+        onMouseEnter={(e) => e.target.style.backgroundColor = "#e8e8e8"}
+        onMouseLeave={(e) => e.target.style.backgroundColor = "#f5f5f5"}
+      >
+        <span>←</span> Back
+      </button>
       <h2 style={{ marginBottom: 32, fontSize: 24, fontWeight: "700" }}>
         Integration Tests
       </h2>
