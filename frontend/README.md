@@ -34,23 +34,23 @@ All integrations are **server-side only** – API keys and credentials never rea
 
 ```
 api/
+├── sippy.js             # Main RPC proxy
 ├── sippy/
-│   ├── index.js         # Main RPC proxy
 │   └── health.js        # Health check
 ├── issabel/
-│   ├── auth.js          # JWT token management
+│   ├── auth.js          # JWT token management (helper)
 │   ├── health.js        # Health check
-│   ├── proxy.js         # Generic proxy helper
-│   ├── extensions.js    # Extensions endpoint
-│   ├── trunks.js        # Trunks endpoint
-│   ├── queues.js        # Queues endpoint
-│   ├── ivr.js           # IVR endpoint
-│   ├── inboundroutes.js # Inbound routes endpoint
-│   └── outboundroutes.js# Outbound routes endpoint
-└── elevenlabs/
-    ├── voices.js        # List voices
-    └── tts.js           # Text-to-speech
+│   └── [resource].js    # Dynamic route for all endpoints
+├── elevenlabs/
+│   ├── voices.js        # List voices
+│   └── tts.js           # Text-to-speech
+└── health.js            # Global health check
 ```
+
+**Note:** Issabel uses a single dynamic route `/api/issabel/[resource]` that handles:
+- `extensions`, `trunks`, `queues`, `ivr`, `inboundroutes`, `outboundroutes`
+
+**Total Serverless Functions:** 7 (Vercel Hobby plan limit: 12)
 
 ---
 
@@ -127,9 +127,28 @@ curl http://localhost:3000/api/issabel/health
 }
 ```
 
-#### Issabel Extensions (Example)
+#### Issabel Resources (Dynamic Routes)
+
+All Issabel resources use the same endpoint pattern: `/api/issabel/{resource}`
+
 ```bash
+# Extensions
 curl http://localhost:3000/api/issabel/extensions
+
+# Trunks
+curl http://localhost:3000/api/issabel/trunks
+
+# Queues
+curl http://localhost:3000/api/issabel/queues
+
+# IVR
+curl http://localhost:3000/api/issabel/ivr
+
+# Inbound Routes
+curl http://localhost:3000/api/issabel/inboundroutes
+
+# Outbound Routes
+curl http://localhost:3000/api/issabel/outboundroutes
 ```
 
 #### ElevenLabs Voices
