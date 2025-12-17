@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velora Telekom - Dünya'nın İlk Yapay Zeka Tabanlı Operatörü</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.8s ease-out;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        .modal {
+            display: none;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .page-content {
+            display: none;
+        }
+        
+        .page-content.active {
+            display: block;
+        }
+        
+        /* Chatbot styles */
+        #chatbot-button {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+        }
+        
+        #chatbot-panel {
+            display: none;
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 384px;
+            height: 600px;
+            z-index: 1000;
+        }
+        
+        #chatbot-panel.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div id="header"></div>
+    
+    <!-- Main Content Area -->
+    <main id="main-content">
+        <!-- Home Page -->
+        <div id="page-home" class="page-content active"></div>
+        
+        <!-- Products Page -->
+        <div id="page-products" class="page-content"></div>
+        
+        <!-- VoIP CRM Page -->
+        <div id="page-voip-crm" class="page-content"></div>
+        
+        <!-- Developers Page -->
+        <div id="page-developers" class="page-content"></div>
+        
+        <!-- Partners Page -->
+        <div id="page-partners" class="page-content"></div>
+        
+        <!-- Resources Page -->
+        <div id="page-resources" class="page-content"></div>
+        
+        <!-- Pricing Page -->
+        <div id="page-pricing" class="page-content"></div>
+    </main>
+    
+    <!-- Footer -->
+    <div id="footer"></div>
+    
+    <!-- Modals -->
+    <div id="login-modal" class="modal"></div>
+    <div id="contact-modal" class="modal"></div>
+    <div id="dealer-modal" class="modal"></div>
+    
+    <!-- Chatbot -->
+    <button id="chatbot-button" class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300 animate-pulse">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+    </button>
+    
+    <div id="chatbot-panel" class="bg-white rounded-2xl shadow-2xl flex-col border border-gray-200"></div>
+    
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/components/header.js"></script>
+    <script src="js/components/footer.js"></script>
+    <script src="js/components/hero.js"></script>
+    <script src="js/components/services.js"></script>
+    <script src="js/components/features.js"></script>
+    <script src="js/components/faq.js"></script>
+    <script src="js/components/cta.js"></script>
+    <script src="js/modals/login.js"></script>
+    <script src="js/modals/contact.js"></script>
+    <script src="js/modals/dealer.js"></script>
+    <script src="js/pages/home.js"></script>
+    <script src="js/pages/products.js"></script>
+    <script src="js/pages/voip-crm.js"></script>
+    <script src="js/pages/developers.js"></script>
+    <script src="js/pages/partners.js"></script>
+    <script src="js/pages/resources.js"></script>
+    <script src="js/pages/pricing.js"></script>
+    <script src="js/chatbot.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
