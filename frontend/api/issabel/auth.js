@@ -44,18 +44,22 @@ async function authenticate(baseUrl, username, password) {
 
     throw new Error("No access_token received from Issabel");
   } catch (error) {
-    if (error.response) {
-      const errorDetail = typeof error.response.data === 'object'
-        ? JSON.stringify(error.response.data)
-        : error.response.data;
+    // Enhanced error details for debugging
+    const errorInfo = {
+      message: error.message,
+      code: error.code,
+      url: `${baseUrl}/pbxapi/authenticate`,
+      username: username,
+    };
 
-      throw new Error(
-        `Issabel auth failed: ${error.response.status} - ${error.response.statusText}. ` +
-        `Response: ${errorDetail}. ` +
-        `URL: ${baseUrl}/pbxapi/authenticate, User: ${username}`
-      );
+    if (error.response) {
+      errorInfo.status = error.response.status;
+      errorInfo.statusText = error.response.statusText;
+      errorInfo.data = error.response.data;
+      errorInfo.headers = error.response.headers;
     }
-    throw error;
+
+    throw new Error(`Issabel auth failed: ${JSON.stringify(errorInfo)}`);
   }
 }
 

@@ -48,6 +48,7 @@ module.exports = async function handler(req, res) {
     });
   } catch (error) {
     const errorMsg = error?.message || String(error);
+    const errorStack = error?.stack;
 
     let code = "CONNECTION_ERROR";
     let message = "Issabel health check failed";
@@ -84,6 +85,8 @@ module.exports = async function handler(req, res) {
         baseUrl,
         username,
         rawError: errorMsg,
+        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+        timestamp: new Date().toISOString(),
       },
     });
   }
