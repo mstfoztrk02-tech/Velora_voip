@@ -15,25 +15,30 @@ let tokenCache = {
  */
 async function authenticate(baseUrl, username, password) {
   try {
+    // Issabel expects form-urlencoded, not JSON
+    const params = new URLSearchParams();
+    params.append('user', username);
+    params.append('password', password);
+
     const response = await axios.post(
       `${baseUrl}/pbxapi/authenticate`,
-      {
-        username,
-        password,
-      },
+      params.toString(),
       {
         timeout: 15000,
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
         },
+        httpsAgent: new (require('https').Agent)({
+          rejectUnauthorized: false, // Allow self-signed certs
+        }),
       }
     );
 
-    if (response.data && response.data.token) {
-      return response.data.token;
+    if (response.data && response.data.access_token) {
+      return response.data.access_token;
     }
 
-    throw new Error("No token received from Issabel");
+    throw new Error("No access_token received from Issabel");
   } catch (error) {
     if (error.response) {
       const errorDetail = typeof error.response.data === 'object'
@@ -119,17 +124,21 @@ async function makeAuthenticatedRequest(
 ) {
   let token = await getToken(baseUrl, username, password);
 
-  try {
-    const response = await axios({
-      url: `${baseUrl}${endpoint}`,
-      ...options,
-      timeout: options.timeout || 15000,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  const requestConfig = {
+    url: `${baseUrl}${endpoint}`,
+    ...options,
+    timeout: options.timeout || 15000,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+    },
+    httpsAgent: new (require('https').Agent)({
+      rejectUnauthorized: false, // Allow self-signed certs
+    }),
+  };
 
+  try {
+    const response = await axios(requestConfig);
     return response.data;
   } catch (error) {
     // If 401, clear cache and retry once
@@ -137,16 +146,8 @@ async function makeAuthenticatedRequest(
       clearToken();
       token = await getToken(baseUrl, username, password);
 
-      const retryResponse = await axios({
-        url: `${baseUrl}${endpoint}`,
-        ...options,
-        timeout: options.timeout || 15000,
-        headers: {
-          ...options.headers,
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
+      requestConfig.headers.Authorization = `Bearer ${token}`;
+      const retryResponse = await axios(requestConfig);
       return retryResponse.data;
     }
 
