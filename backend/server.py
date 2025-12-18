@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from chatbot import router as chatbot_router
 from voip_crm import router as voip_crm_router
+from platinum_campaigns import router as platinum_router
 
 
 ROOT_DIR = Path(__file__).parent
@@ -72,6 +73,7 @@ async def get_status_checks():
 app.include_router(api_router)
 app.include_router(chatbot_router)
 app.include_router(voip_crm_router)
+app.include_router(platinum_router)
 
 app.add_middleware(
     CORSMiddleware,

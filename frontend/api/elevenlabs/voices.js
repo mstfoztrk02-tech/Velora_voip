@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { getVoicesCached } = require("./service");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
@@ -21,18 +21,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const response = await axios.get(`${baseUrl}/v1/voices`, {
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      timeout: 15000,
-    });
+    const data = await getVoicesCached(apiKey, baseUrl);
 
     return res.status(200).json({
       ok: true,
       code: "OK",
-      data: response.data,
+      data,
+      cached: true,
     });
   } catch (error) {
     const errorMsg = error?.message || String(error);
