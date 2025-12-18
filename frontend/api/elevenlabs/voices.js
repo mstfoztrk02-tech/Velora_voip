@@ -1,6 +1,8 @@
 const { getVoicesCached } = require("./service");
+const { withRateLimit } = require("../utils/rate-limiter");
+const { withLogging } = require("../utils/logger");
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({
       ok: false,
@@ -61,4 +63,10 @@ module.exports = async function handler(req, res) {
       details: error.response?.data?.detail || errorMsg,
     });
   }
-};
+}
+
+// Apply middleware: Rate limiting (60 req/min) + Logging
+module.exports = withRateLimit(
+  withLogging(handler, 'ElevenLabs:Voices'),
+  { maxRequests: 60, windowMs: 60000, keyPrefix: 'elevenlabs' }
+);
