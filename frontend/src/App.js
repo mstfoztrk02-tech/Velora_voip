@@ -36,6 +36,13 @@ import FraudManagementPage from "./pages/FraudManagementPage";
 import SystemSettingsPage from "./pages/SystemSettingsPage";
 import LiveCallsPage from "./pages/LiveCallsPage";
 
+import ScriptStudio from "./pages/platinum/ScriptStudio";
+import VoiceLibrary from "./pages/platinum/VoiceLibrary";
+import TTSGenerator from "./pages/platinum/TTSGenerator";
+import AutoDialer from "./pages/platinum/AutoDialer";
+import PlatinumLiveCalls from "./pages/platinum/PlatinumLiveCalls";
+import CDRAnalytics from "./pages/platinum/CDRAnalytics";
+
 export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -103,6 +110,14 @@ export default function App() {
         <Route path="/admin/fraud" element={<ProtectedRoute><FraudManagementPage /></ProtectedRoute>} />
         <Route path="/admin/settings" element={<ProtectedRoute><SystemSettingsPage /></ProtectedRoute>} />
         <Route path="/admin/live-calls" element={<ProtectedRoute><LiveCallsPage /></ProtectedRoute>} />
+
+        {/* Platinum Routes */}
+        <Route path="/crm/platinum/script-studio" element={<ProtectedRoute><ScriptStudio /></ProtectedRoute>} />
+        <Route path="/crm/platinum/voice-library" element={<ProtectedRoute><VoiceLibrary /></ProtectedRoute>} />
+        <Route path="/crm/platinum/tts-generator" element={<ProtectedRoute><TTSGenerator /></ProtectedRoute>} />
+        <Route path="/crm/platinum/auto-dialer" element={<ProtectedRoute><AutoDialer /></ProtectedRoute>} />
+        <Route path="/crm/platinum/live-calls" element={<ProtectedRoute><PlatinumLiveCalls /></ProtectedRoute>} />
+        <Route path="/crm/platinum/cdr-analytics" element={<ProtectedRoute><CDRAnalytics /></ProtectedRoute>} />
       </Routes>
 
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
