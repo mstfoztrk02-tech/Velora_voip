@@ -132,8 +132,6 @@ async function makeAuthenticatedRequest(
 ) {
   let token = await getToken(baseUrl, username, password);
 
-  console.log(`[Issabel] Token obtained: ${token ? token.substring(0, 20) + '...' : 'NULL'}`);
-
   // Disable SSL verification for self-signed certs
   if (process.env.NODE_ENV !== 'production' || process.env.ISSABEL_DISABLE_TLS_VERIFY === 'true') {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';

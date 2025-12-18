@@ -1,4 +1,4 @@
-const { makeAuthenticatedRequest } = require("./auth");
+const { getToken } = require("./auth");
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
@@ -23,32 +23,25 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Try to get extensions as a health check (lightweight query)
-    const data = await makeAuthenticatedRequest(
-      baseUrl,
-      username,
-      password,
-      "/pbxapi/extensions",
-      {
-        method: "GET",
-        params: { limit: 1 },
-      }
-    );
+    // Just test if we can get a token (don't call extensions endpoint)
+    const token = await getToken(baseUrl, username, password);
+
+    if (!token) {
+      throw new Error("No token received from Issabel");
+    }
 
     return res.status(200).json({
       ok: true,
       code: "OK",
-      message: "Issabel connection successful",
+      message: "Issabel authentication successful",
       details: {
         baseUrl: baseUrl.replace(/\/+$/, ""),
         username,
         authenticated: true,
-        dataReceived: !!data,
       },
     });
   } catch (error) {
     const errorMsg = error?.message || String(error);
-    const errorStack = error?.stack;
 
     let code = "CONNECTION_ERROR";
     let message = "Issabel health check failed";
@@ -81,13 +74,6 @@ module.exports = async function handler(req, res) {
       code,
       message,
       details,
-      debug: {
-        baseUrl,
-        username,
-        rawError: errorMsg,
-        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
-        timestamp: new Date().toISOString(),
-      },
     });
   }
 };
