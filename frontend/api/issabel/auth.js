@@ -20,18 +20,22 @@ async function authenticate(baseUrl, username, password) {
     params.append('user', username);
     params.append('password', password);
 
+    const config = {
+      timeout: 15000,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    };
+
+    // Disable SSL verification for self-signed certs (only in serverless)
+    if (process.env.NODE_ENV !== 'production' || process.env.ISSABEL_DISABLE_TLS_VERIFY === 'true') {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
+
     const response = await axios.post(
       `${baseUrl}/pbxapi/authenticate`,
       params.toString(),
-      {
-        timeout: 15000,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        httpsAgent: new (require('https').Agent)({
-          rejectUnauthorized: false, // Allow self-signed certs
-        }),
-      }
+      config
     );
 
     if (response.data && response.data.access_token) {
@@ -124,6 +128,11 @@ async function makeAuthenticatedRequest(
 ) {
   let token = await getToken(baseUrl, username, password);
 
+  // Disable SSL verification for self-signed certs
+  if (process.env.NODE_ENV !== 'production' || process.env.ISSABEL_DISABLE_TLS_VERIFY === 'true') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
+
   const requestConfig = {
     url: `${baseUrl}${endpoint}`,
     ...options,
@@ -132,9 +141,6 @@ async function makeAuthenticatedRequest(
       ...options.headers,
       Authorization: `Bearer ${token}`,
     },
-    httpsAgent: new (require('https').Agent)({
-      rejectUnauthorized: false, // Allow self-signed certs
-    }),
   };
 
   try {
