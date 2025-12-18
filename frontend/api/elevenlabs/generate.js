@@ -1,11 +1,8 @@
 const { generateTTS } = require("./service");
-const { withRateLimit } = require("../utils/rate-limiter");
-const { withLogging } = require("../utils/logger");
-const { withValidation, validators } = require("../utils/validation");
 
 const MAX_TEXT_LENGTH = 5000;
 
-async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
       ok: false,
@@ -30,29 +27,24 @@ async function handler(req, res) {
   const { text, voiceId, format, meta } = body;
 
   // Validation
-  try {
-    validators.required(text, 'text');
-    validators.string(text, 'text', { min: 1, max: MAX_TEXT_LENGTH });
-  } catch (error) {
+  if (!text || typeof text !== "string") {
     return res.status(400).json({
       ok: false,
       code: "INVALID_INPUT",
-      message: error.message,
+      message: "text is required and must be a string",
+    });
+  }
+
+  if (text.length > MAX_TEXT_LENGTH) {
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_INPUT",
+      message: `text must be at most ${MAX_TEXT_LENGTH} characters`,
     });
   }
 
   const selectedVoiceId = voiceId || defaultVoiceId;
   const selectedFormat = format || "mp3_44100_128";
-
-  // Log request
-  if (req.logger) {
-    req.logger.info('Generating TTS', {
-      requestId: req.requestId,
-      textLength: text.length,
-      voiceId: selectedVoiceId,
-      format: selectedFormat,
-    });
-  }
 
   try {
     const result = await generateTTS({
@@ -97,10 +89,4 @@ async function handler(req, res) {
       details: error.response?.data?.detail || errorMsg,
     });
   }
-}
-
-// Apply middleware: Rate limiting (60 req/min) + Logging
-module.exports = withRateLimit(
-  withLogging(handler, 'ElevenLabs:Generate'),
-  { maxRequests: 60, windowMs: 60000, keyPrefix: 'elevenlabs' }
-);
+};
