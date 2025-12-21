@@ -1,0 +1,4 @@
+# Ignore helper files (not serverless functions)
+api/elevenlabs/service.js
+api/issabel/ami-client.js
+api/issabel/auth.js
