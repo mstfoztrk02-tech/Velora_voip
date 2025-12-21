@@ -154,24 +154,13 @@ const LiveCallsPage = () => {
     // Telefon numarasını temizle (sadece rakamlar)
     const cleanNumber = phoneNumber.replace(/\s+/g, '').replace(/\D/g, '');
 
-    // Numara kontrolü
-    if (cleanNumber !== ALLOWED_NUMBER) {
-      toast({
-        title: "❌ Yetki Hatası",
-        description: "Bu numarayı arama yetkiniz bulunmamaktadır.",
-        variant: "destructive",
-        duration: 5000
-      });
-      return;
-    }
-
     setAiCallLoading(true);
 
     // İzin verilen numara girildiğinde asıl aranacak numara
-    const targetNumber = '5326819616';
+    const targetNumber = cleanNumber;
 
     try {
-      const response = await fetch('http://localhost:8000/api/elevenlabs/outbound-call', {
+      const response = await fetch('api/elevenlabs/outbound-call', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
