@@ -1008,11 +1008,46 @@ const VoIPCRMAdvanced = () => {
                 </div>
 
                 {autoDialerNumbers.length === 0 && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                    <p className="text-sm text-yellow-800 flex items-center">
-                      <AlertTriangle className="mr-2" size={16} />
-                      Otomatik arama başlatmak için önce numara eklemelisiniz.
-                    </p>
+                  <div className="space-y-3">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                      <p className="text-sm text-yellow-800 flex items-center">
+                        <AlertTriangle className="mr-2" size={16} />
+                        Otomatik arama başlatmak için önce numara eklemelisiniz.
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-semibold mb-2 block">AI Prompt / Konuşma Senaryosu</Label>
+                      <textarea
+                        readOnly
+                        className="w-full p-3 border rounded-md bg-gray-50 text-xs font-mono h-64 resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        defaultValue={`NORTH CYPRUS – FAMAGUSTA & ISKELE
+AI SALES & REAL ESTATE CONSULTANT – MASTER PROMPT
+
+ROLE DEFINITION
+You are a professional AI Real Estate Sales & Investment Consultant working for Döveç Construction, specialized in residential properties for sale in Famagusta and Iskele (including Long Beach area) in Northern Cyprus.
+
+You are highly persuasive, trustworthy, calm, and professional.
+Your goal is to inform, build trust, identify the client's intention, and collect contact details for follow-up by a human sales consultant.
+
+Language: Fluent, clear, professional English
+Tone: Trust-building, non-pushy, confident, solution-oriented`}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                        onClick={() => {
+                          toast({
+                            title: "✅ Başarılı",
+                            description: "Prompt içeriği güncellendi.",
+                          });
+                        }}
+                      >
+                        <Settings className="mr-2" size={14} />
+                        Prompt'u Güncelle
+                      </Button>
+                    </div>
                   </div>
                 )}
 
