@@ -1,7 +1,28 @@
 import axios from 'axios';
 
 // Merkezi API Client - Tüm API çağrıları buradan geçer
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const getBackendURL = () => {
+  // 1. Environment variable varsa onu kullan
+  if (process.env.REACT_APP_BACKEND_URL) {
+    return process.env.REACT_APP_BACKEND_URL;
+  }
+
+  // 2. Browser ortamında ve production'daysa, aynı origin'i kullan
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    // Localhost'ta geliştirme yapılıyorsa port 8000'i kullan
+    if (origin.includes('localhost')) {
+      return 'http://localhost:8000';
+    }
+    // Production'da aynı origin'i kullan (Vercel proxy veya aynı domain)
+    return origin;
+  }
+
+  // 3. Fallback
+  return 'http://localhost:8000';
+};
+
+const BACKEND_URL = getBackendURL();
 
 const apiClient = axios.create({
   baseURL: BACKEND_URL,
