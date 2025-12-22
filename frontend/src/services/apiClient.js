@@ -1,9 +1,10 @@
 import axios from 'axios';
 
 // Merkezi API Client - Tüm API çağrıları buradan geçer
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+const BACKEND_URL = window.location.origin;
 
 const apiClient = axios.create({
+  baseURL: BACKEND_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
