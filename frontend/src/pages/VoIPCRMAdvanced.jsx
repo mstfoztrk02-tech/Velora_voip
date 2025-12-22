@@ -1008,20 +1008,20 @@ const VoIPCRMAdvanced = () => {
                 </div>
 
                 {autoDialerNumbers.length === 0 && (
-                  <div className="space-y-3">
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                      <p className="text-sm text-yellow-800 flex items-center">
-                        <AlertTriangle className="mr-2" size={16} />
-                        Otomatik arama başlatmak için önce numara eklemelisiniz.
-                      </p>
-                    </div>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                    <p className="text-sm text-yellow-800 flex items-center">
+                      <AlertTriangle className="mr-2" size={16} />
+                      Otomatik arama başlatmak için önce numara eklemelisiniz.
+                    </p>
+                  </div>
+                )}
 
-                    <div>
-                      <Label className="text-sm font-semibold mb-2 block">AI Prompt / Konuşma Senaryosu</Label>
-                      <textarea
-                        readOnly
-                        className="w-full p-3 border rounded-md bg-gray-50 text-xs font-mono h-64 resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        defaultValue={`NORTH CYPRUS – FAMAGUSTA & ISKELE
+                <div>
+                  <Label className="text-sm font-semibold mb-2 block">AI Prompt / Konuşma Senaryosu</Label>
+                  <textarea
+                    rows={10}
+                    className="w-full p-3 border rounded-md bg-white text-xs font-mono resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent overflow-y-auto"
+                    defaultValue={`NORTH CYPRUS – FAMAGUSTA & ISKELE
 AI SALES & REAL ESTATE CONSULTANT – MASTER PROMPT
 
 ROLE DEFINITION
@@ -1032,24 +1032,22 @@ Your goal is to inform, build trust, identify the client's intention, and collec
 
 Language: Fluent, clear, professional English
 Tone: Trust-building, non-pushy, confident, solution-oriented`}
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full mt-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                        onClick={() => {
-                          toast({
-                            title: "✅ Başarılı",
-                            description: "Prompt içeriği güncellendi.",
-                          });
-                        }}
-                      >
-                        <Settings className="mr-2" size={14} />
-                        Prompt'u Güncelle
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                    onClick={() => {
+                      toast({
+                        title: "✅ Başarılı",
+                        description: "Prompt içeriği güncellendi.",
+                      });
+                    }}
+                  >
+                    <Settings className="mr-2" size={14} />
+                    Prompt'u Güncelle
+                  </Button>
+                </div>
 
                 {autoDialerNumbers.length > 0 && (
                   <Button
