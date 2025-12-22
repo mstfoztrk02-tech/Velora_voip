@@ -24,6 +24,7 @@ import authService, { ROLES } from '../services/authService';
 import packageService, { PACKAGES } from '../services/packageService';
 import integrationService from '../services/integrationService';
 import crmService from '../services/crmService';
+import autoDialerService from '../services/autoDialerService';
 
 const VoIPCRMAdvanced = () => {
   const navigate = useNavigate();
@@ -249,10 +250,10 @@ const VoIPCRMAdvanced = () => {
   const loadAutoDialerStatus = async () => {
     try {
       const customerId = currentUser?.phone || 'demo-customer';
-      const response = await fetch(`/api/voip-crm/auto-dialer/status/${customerId}`);
-      const data = await response.json();
+      const data = await autoDialerService.getStatus(customerId);
       setAutoDialerStatus(data);
-      setAutoDialerNumbers(await loadAutoDialerNumbers());
+      const numbers = await autoDialerService.getNumbers(customerId);
+      setAutoDialerNumbers(numbers);
       if (data.session && data.session.status === 'running') {
         setIsAutoDialerRunning(true);
       } else {
@@ -266,8 +267,7 @@ const VoIPCRMAdvanced = () => {
   const loadAutoDialerNumbers = async () => {
     try {
       const customerId = currentUser?.phone || 'demo-customer';
-      const response = await fetch(`/api/voip-crm/auto-dialer/numbers?customer_id=${customerId}`);
-      const data = await response.json();
+      const data = await autoDialerService.getNumbers(customerId);
       return data;
     } catch (error) {
       console.error('Error loading auto dialer numbers:', error);
@@ -287,28 +287,19 @@ const VoIPCRMAdvanced = () => {
 
     try {
       const customerId = currentUser?.phone || 'demo-customer';
-      const response = await fetch('/api/voip-crm/auto-dialer/numbers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_id: customerId,
-          phone_number: newPhoneNumber.trim()
-        })
-      });
+      await autoDialerService.addNumber(customerId, newPhoneNumber.trim());
 
-      if (response.ok) {
-        toast({
-          title: "Başarılı",
-          description: "Numara başarıyla eklendi."
-        });
-        setNewPhoneNumber('');
-        setShowAddNumberModal(false);
-        await loadAutoDialerStatus();
-      }
+      toast({
+        title: "Başarılı",
+        description: "Numara başarıyla eklendi."
+      });
+      setNewPhoneNumber('');
+      setShowAddNumberModal(false);
+      await loadAutoDialerStatus();
     } catch (error) {
       toast({
         title: "Hata",
-        description: "Numara eklenirken bir hata oluştu.",
+        description: error.message || "Numara eklenirken bir hata oluştu.",
         variant: "destructive"
       });
     }
@@ -339,27 +330,17 @@ const VoIPCRMAdvanced = () => {
         }
 
         const customerId = currentUser?.phone || 'demo-customer';
-        const response = await fetch('/api/voip-crm/auto-dialer/numbers/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customer_id: customerId,
-            phone_numbers: phoneNumbers
-          })
-        });
+        const data = await autoDialerService.addNumbersBulk(customerId, phoneNumbers);
 
-        if (response.ok) {
-          const data = await response.json();
-          toast({
-            title: "Başarılı",
-            description: data.message || `${phoneNumbers.length} numara başarıyla eklendi.`
-          });
-          await loadAutoDialerStatus();
-        }
+        toast({
+          title: "Başarılı",
+          description: data.message || `${phoneNumbers.length} numara başarıyla eklendi.`
+        });
+        await loadAutoDialerStatus();
       } catch (error) {
         toast({
           title: "Hata",
-          description: "Excel dosyası işlenirken bir hata oluştu.",
+          description: error.message || "Excel dosyası işlenirken bir hata oluştu.",
           variant: "destructive"
         });
       }
@@ -379,31 +360,21 @@ const VoIPCRMAdvanced = () => {
 
     try {
       const customerId = currentUser?.phone || 'demo-customer';
-      const response = await fetch('/api/voip-crm/auto-dialer/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_id: customerId,
-          concurrent_calls: selectedCallCount
-        })
+      const data = await autoDialerService.start(customerId, selectedCallCount);
+
+      toast({
+        title: "Başarılı",
+        description: data.message || "Otomatik arama başlatıldı."
       });
+      setIsAutoDialerRunning(true);
 
-      if (response.ok) {
-        const data = await response.json();
-        toast({
-          title: "Başarılı",
-          description: data.message || "Otomatik arama başlatıldı."
-        });
-        setIsAutoDialerRunning(true);
-
-        // ElevenLabs ile aramaları başlat
-        await startCallingWithElevenLabs();
-        await loadAutoDialerStatus();
-      }
+      // ElevenLabs ile aramaları başlat
+      await startCallingWithElevenLabs();
+      await loadAutoDialerStatus();
     } catch (error) {
       toast({
         title: "Hata",
-        description: "Otomatik arama başlatılırken bir hata oluştu.",
+        description: error.message || "Otomatik arama başlatılırken bir hata oluştu.",
         variant: "destructive"
       });
     }
@@ -412,26 +383,18 @@ const VoIPCRMAdvanced = () => {
   const handleStopAutoDialer = async () => {
     try {
       const customerId = currentUser?.phone || 'demo-customer';
-      const response = await fetch('/api/voip-crm/auto-dialer/stop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_id: customerId
-        })
-      });
+      await autoDialerService.stop(customerId);
 
-      if (response.ok) {
-        toast({
-          title: "Başarılı",
-          description: "Otomatik arama durduruldu."
-        });
-        setIsAutoDialerRunning(false);
-        await loadAutoDialerStatus();
-      }
+      toast({
+        title: "Başarılı",
+        description: "Otomatik arama durduruldu."
+      });
+      setIsAutoDialerRunning(false);
+      await loadAutoDialerStatus();
     } catch (error) {
       toast({
         title: "Hata",
-        description: "Otomatik arama durdurulurken bir hata oluştu.",
+        description: error.message || "Otomatik arama durdurulurken bir hata oluştu.",
         variant: "destructive"
       });
     }
@@ -449,24 +412,14 @@ const VoIPCRMAdvanced = () => {
       for (const number of numbersToCall) {
         try {
           // ElevenLabs API'sine arama isteği gönder
-          const response = await fetch('/api/elevenlabs/outbound-call', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              agentId: 'agent_4101kd09w180fd9s1m3vh1evhwnr',
-              agentPhoneNumberId: 'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
-              toNumber: number.phone_number
-            })
-          });
+          await autoDialerService.callWithElevenLabs(
+            'agent_4101kd09w180fd9s1m3vh1evhwnr',
+            'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
+            number.phone_number
+          );
 
-          if (response.ok) {
-            // Numara durumunu güncelle
-            await fetch(`/api/voip-crm/auto-dialer/numbers/${number.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: 'calling' })
-            });
-          }
+          // Numara durumunu güncelle
+          await autoDialerService.updateNumber(number.id, 'calling');
         } catch (error) {
           console.error(`Error calling ${number.phone_number}:`, error);
         }
