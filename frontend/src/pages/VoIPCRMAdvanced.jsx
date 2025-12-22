@@ -67,11 +67,13 @@ const VoIPCRMAdvanced = () => {
 
   // Auto Dialer States
   const [autoDialerNumbers, setAutoDialerNumbers] = useState([]);
-  const [autoDialerStatus, setAutoDialerStatus] = useState(null);
   const [selectedCallCount, setSelectedCallCount] = useState(1);
   const [showAddNumberModal, setShowAddNumberModal] = useState(false);
   const [newPhoneNumber, setNewPhoneNumber] = useState('');
   const [isAutoDialerRunning, setIsAutoDialerRunning] = useState(false);
+
+  // localStorage key for cached numbers
+  const CACHE_KEY = 'velora_auto_dialer_numbers';
 
   const ALLOWED_NUMBER = '5338864656'; // İzin verilen numara (sadece rakamlar)
 
@@ -246,36 +248,64 @@ const VoIPCRMAdvanced = () => {
     }
   };
 
-  // Auto Dialer Functions
-  const loadAutoDialerStatus = async () => {
-    try {
-      const customerId = currentUser?.phone || 'demo-customer';
-      const data = await autoDialerService.getStatus(customerId);
-      setAutoDialerStatus(data);
-      const numbers = await autoDialerService.getNumbers(customerId);
-      setAutoDialerNumbers(numbers);
-      if (data.session && data.session.status === 'running') {
-        setIsAutoDialerRunning(true);
-      } else {
-        setIsAutoDialerRunning(false);
-      }
-    } catch (error) {
-      console.error('Error loading auto dialer status:', error);
-    }
-  };
+  // Auto Dialer Functions - localStorage based
 
-  const loadAutoDialerNumbers = async () => {
+  // localStorage yönetimi
+  const loadCachedNumbers = () => {
     try {
-      const customerId = currentUser?.phone || 'demo-customer';
-      const data = await autoDialerService.getNumbers(customerId);
-      return data;
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const numbers = JSON.parse(cached);
+        setAutoDialerNumbers(numbers);
+        return numbers;
+      }
+      return [];
     } catch (error) {
-      console.error('Error loading auto dialer numbers:', error);
+      console.error('Error loading cached numbers:', error);
       return [];
     }
   };
 
-  const handleAddNumber = async () => {
+  const saveCachedNumbers = (numbers) => {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(numbers));
+      setAutoDialerNumbers(numbers);
+    } catch (error) {
+      console.error('Error saving cached numbers:', error);
+    }
+  };
+
+  const addNumberToCache = (phoneNumber) => {
+    const currentNumbers = loadCachedNumbers();
+    const newNumber = {
+      id: Date.now().toString(),
+      phone: phoneNumber,
+      addedAt: new Date().toISOString(),
+      status: 'pending'
+    };
+    const updatedNumbers = [...currentNumbers, newNumber];
+    saveCachedNumbers(updatedNumbers);
+    return updatedNumbers;
+  };
+
+  const removeNumberFromCache = (numberId) => {
+    const currentNumbers = loadCachedNumbers();
+    const updatedNumbers = currentNumbers.filter(n => n.id !== numberId);
+    saveCachedNumbers(updatedNumbers);
+    return updatedNumbers;
+  };
+
+  const clearAllCachedNumbers = () => {
+    localStorage.removeItem(CACHE_KEY);
+    setAutoDialerNumbers([]);
+  };
+
+  // Component mount'ta cache'i yükle
+  useEffect(() => {
+    loadCachedNumbers();
+  }, []);
+
+  const handleAddNumber = () => {
     if (!newPhoneNumber.trim()) {
       toast({
         title: "Hata",
@@ -286,35 +316,33 @@ const VoIPCRMAdvanced = () => {
     }
 
     try {
-      const customerId = currentUser?.phone || 'demo-customer';
-      await autoDialerService.addNumber(customerId, newPhoneNumber.trim());
+      addNumberToCache(newPhoneNumber.trim());
 
       toast({
         title: "Başarılı",
-        description: "Numara başarıyla eklendi."
+        description: "Numara cache'e eklendi."
       });
       setNewPhoneNumber('');
       setShowAddNumberModal(false);
-      await loadAutoDialerStatus();
     } catch (error) {
       toast({
         title: "Hata",
-        description: error.message || "Numara eklenirken bir hata oluştu.",
+        description: "Numara eklenirken bir hata oluştu.",
         variant: "destructive"
       });
     }
   };
 
-  const handleExcelUpload = async (event) => {
+  const handleExcelUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Excel dosyasını okumak için FileReader kullanıyoruz
+    // Excel/CSV dosyasını okumak için FileReader kullanıyoruz
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
         const text = e.target.result;
-        // CSV formatında okuyoruz (Excel'i CSV olarak kaydetmeli veya xlsx kütüphanesi kullanmalı)
+        // CSV formatında okuyoruz
         const lines = text.split('\n');
         const phoneNumbers = lines
           .map(line => line.trim())
@@ -323,24 +351,35 @@ const VoIPCRMAdvanced = () => {
         if (phoneNumbers.length === 0) {
           toast({
             title: "Hata",
-            description: "Excel dosyasında geçerli numara bulunamadı.",
+            description: "Dosyada geçerli numara bulunamadı.",
             variant: "destructive"
           });
           return;
         }
 
-        const customerId = currentUser?.phone || 'demo-customer';
-        const data = await autoDialerService.addNumbersBulk(customerId, phoneNumbers);
+        // Tüm numaraları cache'e ekle
+        const currentNumbers = loadCachedNumbers();
+        const newNumbers = phoneNumbers.map(phone => ({
+          id: `${Date.now()}-${Math.random()}`,
+          phone: phone,
+          addedAt: new Date().toISOString(),
+          status: 'pending'
+        }));
+
+        const updatedNumbers = [...currentNumbers, ...newNumbers];
+        saveCachedNumbers(updatedNumbers);
 
         toast({
           title: "Başarılı",
-          description: data.message || `${phoneNumbers.length} numara başarıyla eklendi.`
+          description: `${phoneNumbers.length} numara cache'e eklendi.`
         });
-        await loadAutoDialerStatus();
+
+        // File input'u sıfırla
+        event.target.value = '';
       } catch (error) {
         toast({
           title: "Hata",
-          description: error.message || "Excel dosyası işlenirken bir hata oluştu.",
+          description: "Dosya işlenirken bir hata oluştu.",
           variant: "destructive"
         });
       }
@@ -349,7 +388,11 @@ const VoIPCRMAdvanced = () => {
   };
 
   const handleStartAutoDialer = async () => {
-    if (autoDialerStatus?.total_numbers === 0) {
+    const cachedNumbers = loadCachedNumbers();
+    const pendingNumbers = cachedNumbers.filter(n => n.status === 'pending');
+
+    // Validasyon: Cache'de yeterli numara var mı?
+    if (cachedNumbers.length === 0) {
       toast({
         title: "Hata",
         description: "Önce numara eklemelisiniz.",
@@ -358,20 +401,28 @@ const VoIPCRMAdvanced = () => {
       return;
     }
 
+    // Validasyon: Seçilen arama adedi kadar numara var mı?
+    if (pendingNumbers.length < selectedCallCount) {
+      toast({
+        title: "Uyarı",
+        description: `Seçilen arama adedi (${selectedCallCount}) için yeterli numara yok. Mevcut: ${pendingNumbers.length}`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
-      const customerId = currentUser?.phone || 'demo-customer';
-      const data = await autoDialerService.start(customerId, selectedCallCount);
+      setIsAutoDialerRunning(true);
 
       toast({
         title: "Başarılı",
-        description: data.message || "Otomatik arama başlatıldı."
+        description: `${selectedCallCount} arama başlatılıyor...`
       });
-      setIsAutoDialerRunning(true);
 
       // ElevenLabs ile aramaları başlat
       await startCallingWithElevenLabs();
-      await loadAutoDialerStatus();
     } catch (error) {
+      setIsAutoDialerRunning(false);
       toast({
         title: "Hata",
         description: error.message || "Otomatik arama başlatılırken bir hata oluştu.",
@@ -380,62 +431,99 @@ const VoIPCRMAdvanced = () => {
     }
   };
 
-  const handleStopAutoDialer = async () => {
+  const handleStopAutoDialer = () => {
+    setIsAutoDialerRunning(false);
+    toast({
+      title: "Durduruldu",
+      description: "Otomatik arama durduruldu."
+    });
+  };
+
+  const startCallingWithElevenLabs = async () => {
     try {
-      const customerId = currentUser?.phone || 'demo-customer';
-      await autoDialerService.stop(customerId);
+      const cachedNumbers = loadCachedNumbers();
+      const pendingNumbers = cachedNumbers.filter(n => n.status === 'pending');
+
+      // Seçilen arama sayısı kadar numara al
+      const numbersToCall = pendingNumbers.slice(0, selectedCallCount);
+
+      let successCount = 0;
+      let failedCount = 0;
+
+      for (const number of numbersToCall) {
+        if (!isAutoDialerRunning) {
+          // Kullanıcı durdurmuş
+          break;
+        }
+
+        try {
+          // Numara durumunu 'calling' olarak güncelle
+          const updatedNumbers = cachedNumbers.map(n =>
+            n.id === number.id ? { ...n, status: 'calling' } : n
+          );
+          saveCachedNumbers(updatedNumbers);
+
+          // ElevenLabs API'sine arama isteği gönder
+          await autoDialerService.callWithElevenLabs(
+            'agent_4101kd09w180fd9s1m3vh1evhwnr',
+            'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
+            number.phone
+          );
+
+          // Başarılı - durumu 'completed' yap
+          const completedNumbers = cachedNumbers.map(n =>
+            n.id === number.id ? { ...n, status: 'completed', calledAt: new Date().toISOString() } : n
+          );
+          saveCachedNumbers(completedNumbers);
+
+          successCount++;
+
+          toast({
+            title: "Arama Başlatıldı",
+            description: `${number.phone} numarası aranıyor...`
+          });
+
+          // API rate limiting için kısa bekleme
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+        } catch (error) {
+          console.error(`Error calling ${number.phone}:`, error);
+
+          // Hata - durumu 'failed' yap
+          const failedNumbers = cachedNumbers.map(n =>
+            n.id === number.id ? { ...n, status: 'failed', error: error.message } : n
+          );
+          saveCachedNumbers(failedNumbers);
+
+          failedCount++;
+
+          toast({
+            title: "Arama Hatası",
+            description: `${number.phone} aranırken hata oluştu.`,
+            variant: "destructive"
+          });
+        }
+      }
+
+      // İşlem tamamlandı
+      setIsAutoDialerRunning(false);
 
       toast({
-        title: "Başarılı",
-        description: "Otomatik arama durduruldu."
+        title: "Arama İşlemi Tamamlandı",
+        description: `Başarılı: ${successCount}, Başarısız: ${failedCount}`
       });
-      setIsAutoDialerRunning(false);
-      await loadAutoDialerStatus();
+
     } catch (error) {
+      console.error('Error starting calls with ElevenLabs:', error);
+      setIsAutoDialerRunning(false);
       toast({
         title: "Hata",
-        description: error.message || "Otomatik arama durdurulurken bir hata oluştu.",
+        description: "Aramalar başlatılırken bir hata oluştu.",
         variant: "destructive"
       });
     }
   };
 
-  const startCallingWithElevenLabs = async () => {
-    try {
-      const customerId = currentUser?.phone || 'demo-customer';
-      const numbers = await loadAutoDialerNumbers();
-      const pendingNumbers = numbers.filter(n => n.status === 'pending');
-
-      // Seçilen arama sayısı kadar numara al
-      const numbersToCall = pendingNumbers.slice(0, selectedCallCount);
-
-      for (const number of numbersToCall) {
-        try {
-          // ElevenLabs API'sine arama isteği gönder
-          await autoDialerService.callWithElevenLabs(
-            'agent_4101kd09w180fd9s1m3vh1evhwnr',
-            'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
-            number.phone_number
-          );
-
-          // Numara durumunu güncelle
-          await autoDialerService.updateNumber(number.id, 'calling');
-        } catch (error) {
-          console.error(`Error calling ${number.phone_number}:`, error);
-        }
-      }
-    } catch (error) {
-      console.error('Error starting calls with ElevenLabs:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (isAuthenticated && userPackage) {
-      loadAutoDialerStatus();
-      const interval = setInterval(loadAutoDialerStatus, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [isAuthenticated, userPackage]);
 
   const handleAICall = () => {
     setShowAIModal(true);
@@ -786,7 +874,7 @@ const VoIPCRMAdvanced = () => {
                 <div className="flex gap-2">
                   <Button
                     onClick={handleStartAutoDialer}
-                    disabled={isAutoDialerRunning || autoDialerStatus?.total_numbers === 0}
+                    disabled={isAutoDialerRunning || autoDialerNumbers.length === 0}
                     className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
                   >
                     <Play className="mr-2" size={16} />
@@ -829,13 +917,25 @@ const VoIPCRMAdvanced = () => {
                   />
                 </div>
 
-                {autoDialerStatus?.total_numbers === 0 && (
+                {autoDialerNumbers.length === 0 && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
                     <p className="text-sm text-yellow-800 flex items-center">
                       <AlertTriangle className="mr-2" size={16} />
                       Otomatik arama başlatmak için önce numara eklemelisiniz.
                     </p>
                   </div>
+                )}
+
+                {autoDialerNumbers.length > 0 && (
+                  <Button
+                    onClick={clearAllCachedNumbers}
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="mr-2" size={14} />
+                    Tüm Numaraları Temizle
+                  </Button>
                 )}
               </div>
 
@@ -844,25 +944,31 @@ const VoIPCRMAdvanced = () => {
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <div className="text-sm text-gray-600">Toplam Numara</div>
                   <div className="text-3xl font-bold text-blue-600">
-                    {autoDialerStatus?.total_numbers || 0}
+                    {autoDialerNumbers.length}
                   </div>
                 </div>
                 <div className="bg-yellow-50 p-4 rounded-lg">
                   <div className="text-sm text-gray-600">Bekleyen</div>
                   <div className="text-3xl font-bold text-yellow-600">
-                    {autoDialerStatus?.pending_calls || 0}
+                    {autoDialerNumbers.filter(n => n.status === 'pending').length}
+                  </div>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Aranıyor</div>
+                  <div className="text-3xl font-bold text-orange-600">
+                    {autoDialerNumbers.filter(n => n.status === 'calling').length}
                   </div>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
                   <div className="text-sm text-gray-600">Tamamlanan</div>
                   <div className="text-3xl font-bold text-green-600">
-                    {autoDialerStatus?.completed_calls || 0}
+                    {autoDialerNumbers.filter(n => n.status === 'completed').length}
                   </div>
                 </div>
                 <div className="bg-red-50 p-4 rounded-lg">
                   <div className="text-sm text-gray-600">Başarısız</div>
                   <div className="text-3xl font-bold text-red-600">
-                    {autoDialerStatus?.failed_calls || 0}
+                    {autoDialerNumbers.filter(n => n.status === 'failed').length}
                   </div>
                 </div>
                 {isAutoDialerRunning && (
@@ -871,6 +977,42 @@ const VoIPCRMAdvanced = () => {
                       <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse mr-2"></div>
                       Otomatik arama devam ediyor...
                     </p>
+                  </div>
+                )}
+
+                {/* Cached Numbers List */}
+                {autoDialerNumbers.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-sm font-semibold text-gray-700 mb-2">Cache'deki Numaralar:</div>
+                    <div className="max-h-60 overflow-y-auto space-y-1">
+                      {autoDialerNumbers.map(num => (
+                        <div
+                          key={num.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded text-xs"
+                        >
+                          <span className="font-mono">{num.phone}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              num.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              num.status === 'calling' ? 'bg-orange-100 text-orange-800' :
+                              num.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {num.status === 'pending' ? 'Bekliyor' :
+                               num.status === 'calling' ? 'Aranıyor' :
+                               num.status === 'completed' ? 'Tamamlandı' :
+                               'Başarısız'}
+                            </span>
+                            <button
+                              onClick={() => removeNumberFromCache(num.id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
