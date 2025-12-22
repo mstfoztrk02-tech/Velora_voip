@@ -388,11 +388,17 @@ const VoIPCRMAdvanced = () => {
   };
 
   const handleStartAutoDialer = async () => {
+    console.log('🚀 handleStartAutoDialer called');
     const cachedNumbers = loadCachedNumbers();
     const pendingNumbers = cachedNumbers.filter(n => n.status === 'pending');
 
+    console.log('📊 Cached numbers:', cachedNumbers.length);
+    console.log('⏳ Pending numbers:', pendingNumbers.length);
+    console.log('🎯 Selected call count:', selectedCallCount);
+
     // Validasyon: Cache'de yeterli numara var mı?
     if (cachedNumbers.length === 0) {
+      console.log('❌ No numbers in cache');
       toast({
         title: "Hata",
         description: "Önce numara eklemelisiniz.",
@@ -403,6 +409,7 @@ const VoIPCRMAdvanced = () => {
 
     // Validasyon: Seçilen arama adedi kadar numara var mı?
     if (pendingNumbers.length < selectedCallCount) {
+      console.log('⚠️ Not enough pending numbers');
       toast({
         title: "Uyarı",
         description: `Seçilen arama adedi (${selectedCallCount}) için yeterli numara yok. Mevcut: ${pendingNumbers.length}`,
@@ -412,6 +419,7 @@ const VoIPCRMAdvanced = () => {
     }
 
     try {
+      console.log('✅ Validation passed, starting dialer...');
       setIsAutoDialerRunning(true);
 
       toast({
@@ -422,6 +430,7 @@ const VoIPCRMAdvanced = () => {
       // ElevenLabs ile aramaları başlat
       await startCallingWithElevenLabs();
     } catch (error) {
+      console.error('❌ Error in handleStartAutoDialer:', error);
       setIsAutoDialerRunning(false);
       toast({
         title: "Hata",
@@ -440,19 +449,29 @@ const VoIPCRMAdvanced = () => {
   };
 
   const startCallingWithElevenLabs = async () => {
+    console.log('📞 startCallingWithElevenLabs called');
+
     try {
       const cachedNumbers = loadCachedNumbers();
       const pendingNumbers = cachedNumbers.filter(n => n.status === 'pending');
 
+      console.log('📋 Numbers to process:', pendingNumbers.length);
+
       // Seçilen arama sayısı kadar numara al
       const numbersToCall = pendingNumbers.slice(0, selectedCallCount);
+      console.log('🎯 Will call', numbersToCall.length, 'numbers');
 
       let successCount = 0;
       let failedCount = 0;
+      let shouldContinue = true;
 
-      for (const number of numbersToCall) {
-        if (!isAutoDialerRunning) {
-          // Kullanıcı durdurmuş
+      for (let i = 0; i < numbersToCall.length; i++) {
+        const number = numbersToCall[i];
+        console.log(`📞 Processing number ${i + 1}/${numbersToCall.length}:`, number.phone);
+
+        // Check if user stopped the dialer
+        if (!shouldContinue) {
+          console.log('⏹️ Dialer stopped by user');
           break;
         }
 
@@ -463,12 +482,16 @@ const VoIPCRMAdvanced = () => {
             n.id === number.id ? { ...n, status: 'calling' } : n
           );
           saveCachedNumbers(updatedNumbers);
+          console.log('📝 Updated status to calling');
 
           // Numarayı temizle (sadece rakamlar)
           const cleanNumber = number.phone.replace(/\s+/g, '').replace(/\D/g, '');
+          const fullNumber = `+90${cleanNumber}`;
+          console.log('📱 Clean number:', fullNumber);
 
           // ElevenLabs API'sine arama isteği gönder (handleStartCall ile aynı mantık)
-          const response = await fetch('api/elevenlabs/outbound-call', {
+          console.log('🌐 Sending request to ElevenLabs API...');
+          const response = await fetch('/api/elevenlabs/outbound-call', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -476,11 +499,13 @@ const VoIPCRMAdvanced = () => {
             body: JSON.stringify({
               agentId: 'agent_4101kd09w180fd9s1m3vh1evhwnr',
               agentPhoneNumberId: 'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
-              toNumber: `+90${cleanNumber}`
+              toNumber: fullNumber
             })
           });
 
+          console.log('📡 Response status:', response.status);
           const data = await response.json();
+          console.log('📦 Response data:', data);
 
           if (response.ok && data.success) {
             // Başarılı - durumu 'completed' yap
@@ -496,6 +521,7 @@ const VoIPCRMAdvanced = () => {
             saveCachedNumbers(completedNumbers);
 
             successCount++;
+            console.log('✅ Call successful');
 
             toast({
               title: "✅ Arama Başlatıldı",
@@ -506,10 +532,11 @@ const VoIPCRMAdvanced = () => {
           }
 
           // API rate limiting için kısa bekleme
+          console.log('⏱️ Waiting 1.5s before next call...');
           await new Promise(resolve => setTimeout(resolve, 1500));
 
         } catch (error) {
-          console.error(`Error calling ${number.phone}:`, error);
+          console.error(`❌ Error calling ${number.phone}:`, error);
 
           // Hata - durumu 'failed' yap
           const failedCached = loadCachedNumbers();
@@ -535,6 +562,7 @@ const VoIPCRMAdvanced = () => {
 
       // İşlem tamamlandı
       setIsAutoDialerRunning(false);
+      console.log(`🎉 Calling completed. Success: ${successCount}, Failed: ${failedCount}`);
 
       toast({
         title: "🎉 Arama İşlemi Tamamlandı",
@@ -543,7 +571,7 @@ const VoIPCRMAdvanced = () => {
       });
 
     } catch (error) {
-      console.error('Error starting calls with ElevenLabs:', error);
+      console.error('❌ Error starting calls with ElevenLabs:', error);
       setIsAutoDialerRunning(false);
       toast({
         title: "Hata",
