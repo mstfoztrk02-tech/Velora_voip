@@ -71,6 +71,7 @@ const VoIPCRMAdvanced = () => {
   const [showAddNumberModal, setShowAddNumberModal] = useState(false);
   const [newPhoneNumber, setNewPhoneNumber] = useState('');
   const [isAutoDialerRunning, setIsAutoDialerRunning] = useState(false);
+  const [selectedAIAssistant, setSelectedAIAssistant] = useState('mustafa'); // 'elif' or 'mustafa'
 
   // localStorage key for cached numbers
   const CACHE_KEY = 'velora_auto_dialer_numbers';
@@ -395,6 +396,7 @@ const VoIPCRMAdvanced = () => {
     console.log('📊 Cached numbers:', cachedNumbers.length);
     console.log('⏳ Pending numbers:', pendingNumbers.length);
     console.log('🎯 Selected call count:', selectedCallCount);
+    console.log('🤖 Selected AI Assistant:', selectedAIAssistant === 'mustafa' ? 'Mustafa Bey' : 'Elif Hanım');
 
     // Validasyon: Cache'de yeterli numara var mı?
     if (cachedNumbers.length === 0) {
@@ -450,6 +452,7 @@ const VoIPCRMAdvanced = () => {
 
   const startCallingWithElevenLabs = async () => {
     console.log('📞 startCallingWithElevenLabs called');
+    console.log('🤖 Using AI Assistant:', selectedAIAssistant === 'mustafa' ? 'Mustafa Bey' : 'Elif Hanım');
 
     try {
       const cachedNumbers = loadCachedNumbers();
@@ -928,6 +931,36 @@ const VoIPCRMAdvanced = () => {
                   </select>
                 </div>
 
+                <div>
+                  <Label className="text-sm font-semibold mb-2 block">Yapay Zeka Ses Asistanını Seçiniz</Label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 p-2 border rounded-md hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="aiAssistant"
+                        value="mustafa"
+                        checked={selectedAIAssistant === 'mustafa'}
+                        onChange={(e) => setSelectedAIAssistant(e.target.value)}
+                        disabled={isAutoDialerRunning}
+                        className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Mustafa Bey</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 border rounded-md hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="aiAssistant"
+                        value="elif"
+                        checked={selectedAIAssistant === 'elif'}
+                        onChange={(e) => setSelectedAIAssistant(e.target.value)}
+                        disabled={isAutoDialerRunning}
+                        className="w-4 h-4 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Elif Hanım</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button
                     onClick={handleStartAutoDialer}
@@ -935,7 +968,7 @@ const VoIPCRMAdvanced = () => {
                     className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
                   >
                     <Play className="mr-2" size={16} />
-                    Otomatik Arama Başlat
+                    A.I. ile Otomatik Arama Başlat
                   </Button>
                   <Button
                     onClick={handleStopAutoDialer}
