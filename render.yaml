@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: velora-voip-backend
+    env: python
+    region: frankfurt
+    plan: free
+    branch: main
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: velora_voip
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
