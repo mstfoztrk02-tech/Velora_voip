@@ -64,6 +64,14 @@ const VoIPCRMAdvanced = () => {
   const [showAIModal, setShowAIModal] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
 
+  // Auto Dialer States
+  const [autoDialerNumbers, setAutoDialerNumbers] = useState([]);
+  const [autoDialerStatus, setAutoDialerStatus] = useState(null);
+  const [selectedCallCount, setSelectedCallCount] = useState(1);
+  const [showAddNumberModal, setShowAddNumberModal] = useState(false);
+  const [newPhoneNumber, setNewPhoneNumber] = useState('');
+  const [isAutoDialerRunning, setIsAutoDialerRunning] = useState(false);
+
   const ALLOWED_NUMBER = '5338864656'; // İzin verilen numara (sadece rakamlar)
 
   useEffect(() => {
@@ -236,6 +244,245 @@ const VoIPCRMAdvanced = () => {
       });
     }
   };
+
+  // Auto Dialer Functions
+  const loadAutoDialerStatus = async () => {
+    try {
+      const customerId = currentUser?.phone || 'demo-customer';
+      const response = await fetch(`/api/voip-crm/auto-dialer/status/${customerId}`);
+      const data = await response.json();
+      setAutoDialerStatus(data);
+      setAutoDialerNumbers(await loadAutoDialerNumbers());
+      if (data.session && data.session.status === 'running') {
+        setIsAutoDialerRunning(true);
+      } else {
+        setIsAutoDialerRunning(false);
+      }
+    } catch (error) {
+      console.error('Error loading auto dialer status:', error);
+    }
+  };
+
+  const loadAutoDialerNumbers = async () => {
+    try {
+      const customerId = currentUser?.phone || 'demo-customer';
+      const response = await fetch(`/api/voip-crm/auto-dialer/numbers?customer_id=${customerId}`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error loading auto dialer numbers:', error);
+      return [];
+    }
+  };
+
+  const handleAddNumber = async () => {
+    if (!newPhoneNumber.trim()) {
+      toast({
+        title: "Hata",
+        description: "Lütfen geçerli bir numara girin.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const customerId = currentUser?.phone || 'demo-customer';
+      const response = await fetch('/api/voip-crm/auto-dialer/numbers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          phone_number: newPhoneNumber.trim()
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Başarılı",
+          description: "Numara başarıyla eklendi."
+        });
+        setNewPhoneNumber('');
+        setShowAddNumberModal(false);
+        await loadAutoDialerStatus();
+      }
+    } catch (error) {
+      toast({
+        title: "Hata",
+        description: "Numara eklenirken bir hata oluştu.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleExcelUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Excel dosyasını okumak için FileReader kullanıyoruz
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target.result;
+        // CSV formatında okuyoruz (Excel'i CSV olarak kaydetmeli veya xlsx kütüphanesi kullanmalı)
+        const lines = text.split('\n');
+        const phoneNumbers = lines
+          .map(line => line.trim())
+          .filter(line => line && /^\+?\d+$/.test(line)); // Sadece numara içeren satırlar
+
+        if (phoneNumbers.length === 0) {
+          toast({
+            title: "Hata",
+            description: "Excel dosyasında geçerli numara bulunamadı.",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        const customerId = currentUser?.phone || 'demo-customer';
+        const response = await fetch('/api/voip-crm/auto-dialer/numbers/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: customerId,
+            phone_numbers: phoneNumbers
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          toast({
+            title: "Başarılı",
+            description: data.message || `${phoneNumbers.length} numara başarıyla eklendi.`
+          });
+          await loadAutoDialerStatus();
+        }
+      } catch (error) {
+        toast({
+          title: "Hata",
+          description: "Excel dosyası işlenirken bir hata oluştu.",
+          variant: "destructive"
+        });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleStartAutoDialer = async () => {
+    if (autoDialerStatus?.total_numbers === 0) {
+      toast({
+        title: "Hata",
+        description: "Önce numara eklemelisiniz.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const customerId = currentUser?.phone || 'demo-customer';
+      const response = await fetch('/api/voip-crm/auto-dialer/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          concurrent_calls: selectedCallCount
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast({
+          title: "Başarılı",
+          description: data.message || "Otomatik arama başlatıldı."
+        });
+        setIsAutoDialerRunning(true);
+
+        // ElevenLabs ile aramaları başlat
+        await startCallingWithElevenLabs();
+        await loadAutoDialerStatus();
+      }
+    } catch (error) {
+      toast({
+        title: "Hata",
+        description: "Otomatik arama başlatılırken bir hata oluştu.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleStopAutoDialer = async () => {
+    try {
+      const customerId = currentUser?.phone || 'demo-customer';
+      const response = await fetch('/api/voip-crm/auto-dialer/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Başarılı",
+          description: "Otomatik arama durduruldu."
+        });
+        setIsAutoDialerRunning(false);
+        await loadAutoDialerStatus();
+      }
+    } catch (error) {
+      toast({
+        title: "Hata",
+        description: "Otomatik arama durdurulurken bir hata oluştu.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const startCallingWithElevenLabs = async () => {
+    try {
+      const customerId = currentUser?.phone || 'demo-customer';
+      const numbers = await loadAutoDialerNumbers();
+      const pendingNumbers = numbers.filter(n => n.status === 'pending');
+
+      // Seçilen arama sayısı kadar numara al
+      const numbersToCall = pendingNumbers.slice(0, selectedCallCount);
+
+      for (const number of numbersToCall) {
+        try {
+          // ElevenLabs API'sine arama isteği gönder
+          const response = await fetch('/api/elevenlabs/outbound-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agentId: 'agent_4101kd09w180fd9s1m3vh1evhwnr',
+              agentPhoneNumberId: 'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
+              toNumber: number.phone_number
+            })
+          });
+
+          if (response.ok) {
+            // Numara durumunu güncelle
+            await fetch(`/api/voip-crm/auto-dialer/numbers/${number.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'calling' })
+            });
+          }
+        } catch (error) {
+          console.error(`Error calling ${number.phone_number}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error starting calls with ElevenLabs:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && userPackage) {
+      loadAutoDialerStatus();
+      const interval = setInterval(loadAutoDialerStatus, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, userPackage]);
 
   const handleAICall = () => {
     setShowAIModal(true);
@@ -548,6 +795,135 @@ const VoIPCRMAdvanced = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Auto Dialer Module */}
+        <Card className="mb-6 border-purple-500 border-2">
+          <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50">
+            <CardTitle className="flex items-center text-purple-700">
+              <Phone className="mr-2" size={20} />
+              Otomatik Arama Modülü
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Side - Controls */}
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm font-semibold mb-2 block">Arama Adedi</Label>
+                  <select
+                    value={selectedCallCount}
+                    onChange={(e) => setSelectedCallCount(Number(e.target.value))}
+                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    disabled={isAutoDialerRunning}
+                  >
+                    <option value={1}>1 Arama</option>
+                    <option value={2}>2 Arama</option>
+                    <option value={3}>3 Arama</option>
+                    <option value={5}>5 Arama</option>
+                    <option value={10}>10 Arama</option>
+                    <option value={20}>20 Arama</option>
+                    <option value={50}>50 Arama</option>
+                    <option value={100}>100 Arama</option>
+                    <option value={200}>200 Arama</option>
+                    <option value={500}>500 Arama</option>
+                    <option value={1000}>1000 Arama</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleStartAutoDialer}
+                    disabled={isAutoDialerRunning || autoDialerStatus?.total_numbers === 0}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+                  >
+                    <Play className="mr-2" size={16} />
+                    Otomatik Arama Başlat
+                  </Button>
+                  <Button
+                    onClick={handleStopAutoDialer}
+                    disabled={!isAutoDialerRunning}
+                    variant="destructive"
+                    className="flex-1"
+                  >
+                    <Pause className="mr-2" size={16} />
+                    Aramayı Durdur
+                  </Button>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowAddNumberModal(true)}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Plus className="mr-2" size={16} />
+                    Numara Ekle
+                  </Button>
+                  <Button
+                    onClick={() => document.getElementById('excel-upload').click()}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <FileText className="mr-2" size={16} />
+                    Excel İle Toplu Numara Ekle
+                  </Button>
+                  <input
+                    id="excel-upload"
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={handleExcelUpload}
+                    className="hidden"
+                  />
+                </div>
+
+                {autoDialerStatus?.total_numbers === 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                    <p className="text-sm text-yellow-800 flex items-center">
+                      <AlertTriangle className="mr-2" size={16} />
+                      Otomatik arama başlatmak için önce numara eklemelisiniz.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Side - Statistics */}
+              <div className="space-y-3">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Toplam Numara</div>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {autoDialerStatus?.total_numbers || 0}
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Bekleyen</div>
+                  <div className="text-3xl font-bold text-yellow-600">
+                    {autoDialerStatus?.pending_calls || 0}
+                  </div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Tamamlanan</div>
+                  <div className="text-3xl font-bold text-green-600">
+                    {autoDialerStatus?.completed_calls || 0}
+                  </div>
+                </div>
+                <div className="bg-red-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600">Başarısız</div>
+                  <div className="text-3xl font-bold text-red-600">
+                    {autoDialerStatus?.failed_calls || 0}
+                  </div>
+                </div>
+                {isAutoDialerRunning && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
+                    <p className="text-sm text-purple-800 flex items-center">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse mr-2"></div>
+                      Otomatik arama devam ediyor...
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Real-time Live Calls Dashboard (Default View) */}
         <Card className="mb-6 border-green-500 border-2">
@@ -1206,6 +1582,52 @@ const VoIPCRMAdvanced = () => {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
             <p className="font-semibold mb-1">ℹ️ Bilgilendirme</p>
             <p>Sadece yetkili telefon numaralarını arayabilirsiniz.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Number Modal */}
+      <Dialog open={showAddNumberModal} onOpenChange={setShowAddNumberModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="text-purple-600" size={24} />
+              Numara Ekle
+            </DialogTitle>
+            <DialogDescription>
+              Otomatik arama için tek bir numara ekleyin
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Telefon Numarası</Label>
+              <div className="flex items-center gap-2">
+                <div className="bg-gray-100 px-3 py-2 rounded-md text-sm font-mono">
+                  +90
+                </div>
+                <Input
+                  type="text"
+                  placeholder="5XX XXX XX XX"
+                  value={newPhoneNumber}
+                  onChange={(e) => setNewPhoneNumber(e.target.value)}
+                  className="flex-1 font-mono"
+                  maxLength={13}
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Örnek: 533 886 46 56
+              </p>
+            </div>
+
+            <Button
+              onClick={handleAddNumber}
+              disabled={!newPhoneNumber.trim()}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            >
+              <Plus className="mr-2" size={16} />
+              Numara Ekle
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
