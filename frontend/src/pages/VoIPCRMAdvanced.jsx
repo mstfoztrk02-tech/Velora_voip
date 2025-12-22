@@ -458,48 +458,76 @@ const VoIPCRMAdvanced = () => {
 
         try {
           // Numara durumunu 'calling' olarak güncelle
-          const updatedNumbers = cachedNumbers.map(n =>
+          const currentCached = loadCachedNumbers();
+          const updatedNumbers = currentCached.map(n =>
             n.id === number.id ? { ...n, status: 'calling' } : n
           );
           saveCachedNumbers(updatedNumbers);
 
-          // ElevenLabs API'sine arama isteği gönder
-          await autoDialerService.callWithElevenLabs(
-            'agent_4101kd09w180fd9s1m3vh1evhwnr',
-            'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
-            number.phone
-          );
+          // Numarayı temizle (sadece rakamlar)
+          const cleanNumber = number.phone.replace(/\s+/g, '').replace(/\D/g, '');
 
-          // Başarılı - durumu 'completed' yap
-          const completedNumbers = cachedNumbers.map(n =>
-            n.id === number.id ? { ...n, status: 'completed', calledAt: new Date().toISOString() } : n
-          );
-          saveCachedNumbers(completedNumbers);
-
-          successCount++;
-
-          toast({
-            title: "Arama Başlatıldı",
-            description: `${number.phone} numarası aranıyor...`
+          // ElevenLabs API'sine arama isteği gönder (handleStartCall ile aynı mantık)
+          const response = await fetch('api/elevenlabs/outbound-call', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              agentId: 'agent_4101kd09w180fd9s1m3vh1evhwnr',
+              agentPhoneNumberId: 'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
+              toNumber: `+90${cleanNumber}`
+            })
           });
 
+          const data = await response.json();
+
+          if (response.ok && data.success) {
+            // Başarılı - durumu 'completed' yap
+            const completedCached = loadCachedNumbers();
+            const completedNumbers = completedCached.map(n =>
+              n.id === number.id ? {
+                ...n,
+                status: 'completed',
+                calledAt: new Date().toISOString(),
+                callId: data.callId || null
+              } : n
+            );
+            saveCachedNumbers(completedNumbers);
+
+            successCount++;
+
+            toast({
+              title: "✅ Arama Başlatıldı",
+              description: `${number.phone} numarası aranıyor...`
+            });
+          } else {
+            throw new Error(data.message || 'Arama başlatılamadı');
+          }
+
           // API rate limiting için kısa bekleme
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
 
         } catch (error) {
           console.error(`Error calling ${number.phone}:`, error);
 
           // Hata - durumu 'failed' yap
-          const failedNumbers = cachedNumbers.map(n =>
-            n.id === number.id ? { ...n, status: 'failed', error: error.message } : n
+          const failedCached = loadCachedNumbers();
+          const failedNumbers = failedCached.map(n =>
+            n.id === number.id ? {
+              ...n,
+              status: 'failed',
+              error: error.message,
+              failedAt: new Date().toISOString()
+            } : n
           );
           saveCachedNumbers(failedNumbers);
 
           failedCount++;
 
           toast({
-            title: "Arama Hatası",
-            description: `${number.phone} aranırken hata oluştu.`,
+            title: "❌ Arama Hatası",
+            description: `${number.phone} - ${error.message}`,
             variant: "destructive"
           });
         }
@@ -509,8 +537,9 @@ const VoIPCRMAdvanced = () => {
       setIsAutoDialerRunning(false);
 
       toast({
-        title: "Arama İşlemi Tamamlandı",
-        description: `Başarılı: ${successCount}, Başarısız: ${failedCount}`
+        title: "🎉 Arama İşlemi Tamamlandı",
+        description: `Başarılı: ${successCount}, Başarısız: ${failedCount}`,
+        duration: 5000
       });
 
     } catch (error) {
