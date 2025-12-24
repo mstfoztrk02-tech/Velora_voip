@@ -66,9 +66,16 @@ const VoIPCRM = () => {
     setLoadingSippyCDRs(true);
     try {
       const response = await axios.get(`${BACKEND_URL}/api/sippy/cdrs?limit=100`);
-      setSippyCDRs(response.data);
+      // Response format: { ok: bool, message: string, data: array, total: number }
+      if (response.data && response.data.ok && response.data.data) {
+        setSippyCDRs(response.data.data);
+      } else {
+        console.error('Sippy CDRs error:', response.data?.message || 'Unknown error');
+        setSippyCDRs([]);
+      }
     } catch (error) {
       console.error('Error loading Sippy CDRs:', error);
+      setSippyCDRs([]);
     } finally {
       setLoadingSippyCDRs(false);
     }

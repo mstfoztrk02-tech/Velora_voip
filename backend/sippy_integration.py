@@ -42,6 +42,12 @@ class SippyHealthResponse(BaseModel):
     message: str
     details: Optional[Dict[str, Any]] = None
 
+class SippyCDRResponse(BaseModel):
+    ok: bool
+    message: str
+    data: Optional[List[CDRRecord]] = None
+    total: Optional[int] = None
+
 def md5(data: str) -> str:
     """Generate MD5 hash"""
     return hashlib.md5(data.encode()).hexdigest()
@@ -277,7 +283,7 @@ async def check_sippy_health():
             details={"error": str(e)}
         )
 
-@router.get("/cdrs", response_model=List[CDRRecord])
+@router.get("/cdrs", response_model=SippyCDRResponse)
 async def get_call_records(
     limit: int = 100,
     offset: int = 0,
@@ -298,9 +304,11 @@ async def get_call_records(
         order: Sort order - oldest_first, oldest_last, longest_first, longest_last
     """
     if not SIPPY_RPC_URL or not SIPPY_RPC_USER or not SIPPY_RPC_PASS:
-        raise HTTPException(
-            status_code=503,
-            detail="SippySoft credentials not configured"
+        return SippyCDRResponse(
+            ok=False,
+            message="SippySoft credentials not configured",
+            data=None,
+            total=0
         )
 
     try:
@@ -361,13 +369,20 @@ async def get_call_records(
 
         logger.info(f"Returning {len(paginated_list)} calls (offset: {offset}, limit: {limit})")
 
-        return paginated_list
+        return SippyCDRResponse(
+            ok=True,
+            message=f"Successfully fetched {len(paginated_list)} call records",
+            data=paginated_list,
+            total=len(cdr_list)
+        )
 
     except Exception as e:
         logger.error(f"Error fetching calls from SippySoft: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch calls from SippySoft: {str(e)}"
+        return SippyCDRResponse(
+            ok=False,
+            message=f"Failed to fetch calls from SippySoft: {str(e)}",
+            data=None,
+            total=0
         )
 
 @router.post("/call-method")
