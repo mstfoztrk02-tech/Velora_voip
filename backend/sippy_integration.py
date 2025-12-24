@@ -82,19 +82,23 @@ def build_xmlrpc_request(method: str, params: List[Any]) -> str:
     if params:
         param_values = []
         for param in params:
-            if isinstance(param, str):
+            if isinstance(param, bool):
+                # Handle boolean BEFORE int check (bool is subclass of int in Python)
+                param_values.append(f"<param><value><int>{1 if param else 0}</int></value></param>")
+            elif isinstance(param, str):
                 param_values.append(f"<param><value><string>{param}</string></value></param>")
             elif isinstance(param, int):
                 param_values.append(f"<param><value><int>{param}</int></value></param>")
             elif isinstance(param, dict):
                 members = ""
                 for key, val in param.items():
-                    if isinstance(val, str):
+                    if isinstance(val, bool):
+                        # Handle boolean BEFORE int check
+                        value_tag = f"<int>{1 if val else 0}</int>"
+                    elif isinstance(val, str):
                         value_tag = f"<string>{val}</string>"
                     elif isinstance(val, int):
                         value_tag = f"<int>{val}</int>"
-                    elif isinstance(val, bool):
-                        value_tag = f"<boolean>{1 if val else 0}</boolean>"
                     else:
                         value_tag = f"<string>{str(val)}</string>"
                     members += f"<member><name>{key}</name><value>{value_tag}</value></member>"
@@ -274,15 +278,24 @@ async def check_sippy_health():
         )
 
 @router.get("/cdrs", response_model=List[CDRRecord])
-async def get_call_records(limit: int = 100, offset: int = 0):
+async def get_call_records(
+    limit: int = 100,
+    offset: int = 0,
+    i_customer: str = "",
+    recursive: bool = True,
+    order: Optional[str] = None
+):
     """
-    Fetch Call Detail Records (CDRs) from SippySoft using XML-RPC
+    Fetch Active Calls from SippySoft using listAllCalls XML-RPC method
 
-    This endpoint uses the listAllCalls equivalent method from SippySoft API
+    Based on: https://support.sippysoft.com/support/solutions/articles/107462-xml-rpc-api-manage-active-calls
 
     Query Parameters:
-        limit: Maximum number of records (default: 100)
-        offset: Pagination offset (default: 0)
+        limit: Maximum number of records (default: 100) - applied after fetching
+        offset: Pagination offset (default: 0) - applied after fetching
+        i_customer: Customer ID filter (default: "" for root customer)
+        recursive: Include subcustomer calls (default: True)
+        order: Sort order - oldest_first, oldest_last, longest_first, longest_last
     """
     if not SIPPY_RPC_URL or not SIPPY_RPC_USER or not SIPPY_RPC_PASS:
         raise HTTPException(
@@ -291,44 +304,28 @@ async def get_call_records(limit: int = 100, offset: int = 0):
         )
 
     try:
-        # Call SippySoft XML-RPC method to get CDRs
-        # Common methods: CDR.get_list, xdrs_list, get_cdr_list
-        # Try multiple possible method names
+        # Prepare parameters for listAllCalls
+        params = {
+            "i_customer": i_customer,
+            "recursive": recursive
+        }
 
-        cdr_methods = [
-            ("CDR.get_list", {"i_customer": "", "limit": limit, "offset": offset}),
-            ("get_cdr_list", {"limit": limit, "offset": offset}),
-            ("xdrs_list", [{"limit": limit, "offset": offset}])
-        ]
+        if order:
+            params["order"] = order
 
-        result = None
-        last_error = None
+        logger.info(f"Calling SippySoft listAllCalls with params: {params}")
 
-        for method_name, params in cdr_methods:
-            try:
-                logger.info(f"Trying SippySoft method: {method_name}")
-                # Convert dict params to list if needed
-                param_list = [params] if isinstance(params, dict) else params if isinstance(params, list) else []
+        # Call SippySoft listAllCalls method
+        result = await call_xmlrpc(
+            SIPPY_RPC_URL,
+            SIPPY_RPC_USER,
+            SIPPY_RPC_PASS,
+            "listAllCalls",
+            [params],
+            SIPPY_DISABLE_TLS_VERIFY
+        )
 
-                result = await call_xmlrpc(
-                    SIPPY_RPC_URL,
-                    SIPPY_RPC_USER,
-                    SIPPY_RPC_PASS,
-                    method_name,
-                    param_list,
-                    SIPPY_DISABLE_TLS_VERIFY
-                )
-
-                if result:
-                    logger.info(f"Successfully fetched CDRs using {method_name}")
-                    break
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Method {method_name} failed: {e}")
-                continue
-
-        if not result:
-            raise Exception(f"All CDR methods failed. Last error: {last_error}")
+        logger.info(f"Successfully fetched {len(result) if isinstance(result, list) else 0} calls from SippySoft")
 
         # Transform result to CDR records
         cdr_list = []
@@ -336,30 +333,41 @@ async def get_call_records(limit: int = 100, offset: int = 0):
         if isinstance(result, list):
             for record in result:
                 if isinstance(record, dict):
+                    # Parse SippySoft listAllCalls response format
+                    # Fields: CLI, CLD, CALL_ID, DURATION, CC_STATE, I_ACCOUNT,
+                    #         CALLER_MEDIA_IP, CALLEE_MEDIA_IP, SETUP_TIME, DIRECTION, NODE_ID
+
                     cdr = CDRRecord(
-                        call_id=str(record.get('i_xdr') or record.get('id') or ''),
-                        caller=record.get('CLI') or record.get('caller') or record.get('from') or 'Unknown',
-                        callee=record.get('CLD') or record.get('callee') or record.get('to') or 'Unknown',
-                        start_time=record.get('connect_time') or record.get('start_time') or datetime.utcnow().isoformat(),
-                        end_time=record.get('disconnect_time') or record.get('end_time'),
-                        duration=int(record.get('charged_quantity') or record.get('duration') or record.get('billsec') or 0),
-                        status=record.get('disconnect_reason') or record.get('status') or 'completed',
-                        direction='inbound' if record.get('incoming') else 'outbound',
-                        country=record.get('country') or record.get('dest_country'),
-                        city=record.get('region') or record.get('dest_city'),
-                        cost=float(record.get('charged_amount') or record.get('cost') or 0),
-                        trunk=record.get('i_account') or record.get('trunk'),
+                        call_id=str(record.get('CALL_ID') or record.get('call_id') or ''),
+                        caller=record.get('CLI') or record.get('caller') or 'Unknown',
+                        callee=record.get('CLD') or record.get('callee') or 'Unknown',
+                        start_time=record.get('SETUP_TIME') or record.get('setup_time') or datetime.utcnow().isoformat(),
+                        end_time=None,  # Active calls don't have end time yet
+                        duration=int(record.get('DURATION') or record.get('duration') or 0),
+                        status=record.get('CC_STATE') or record.get('status') or 'active',
+                        direction=record.get('DIRECTION') or ('inbound' if record.get('incoming') else 'outbound'),
+                        country=record.get('country'),
+                        city=record.get('city') or record.get('region'),
+                        cost=float(record.get('cost') or 0),
+                        trunk=str(record.get('I_ACCOUNT') or record.get('i_account') or ''),
                         codec=record.get('codec')
                     )
                     cdr_list.append(cdr)
 
-        return cdr_list
+        # Apply limit and offset (client-side pagination)
+        start = offset
+        end = offset + limit
+        paginated_list = cdr_list[start:end]
+
+        logger.info(f"Returning {len(paginated_list)} calls (offset: {offset}, limit: {limit})")
+
+        return paginated_list
 
     except Exception as e:
-        logger.error(f"Error fetching CDRs: {e}")
+        logger.error(f"Error fetching calls from SippySoft: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch CDRs from SippySoft: {str(e)}"
+            detail=f"Failed to fetch calls from SippySoft: {str(e)}"
         )
 
 @router.post("/call-method")
