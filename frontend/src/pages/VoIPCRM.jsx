@@ -24,6 +24,8 @@ const VoIPCRM = () => {
   const [dealers, setDealers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [callRecords, setCallRecords] = useState([]);
+  const [sippyCDRs, setSippyCDRs] = useState([]);
+  const [loadingSippyCDRs, setLoadingSippyCDRs] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [expandedDealers, setExpandedDealers] = useState(new Set());
   const [isPlaying, setIsPlaying] = useState(false);
@@ -33,6 +35,13 @@ const VoIPCRM = () => {
 
   useEffect(() => {
     loadData();
+    loadSippyCDRs();
+
+    const interval = setInterval(() => {
+      loadSippyCDRs();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
@@ -43,13 +52,25 @@ const VoIPCRM = () => {
         axios.get(`${BACKEND_URL}/api/voip-crm/customers`),
         axios.get(`${BACKEND_URL}/api/voip-crm/call-records`)
       ]);
-      
+
       setStats(statsRes.data);
       setDealers(dealersRes.data);
       setCustomers(customersRes.data);
       setCallRecords(callsRes.data);
     } catch (error) {
       console.error('Error loading data:', error);
+    }
+  };
+
+  const loadSippyCDRs = async () => {
+    setLoadingSippyCDRs(true);
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/sippy/cdrs?limit=100`);
+      setSippyCDRs(response.data);
+    } catch (error) {
+      console.error('Error loading Sippy CDRs:', error);
+    } finally {
+      setLoadingSippyCDRs(false);
     }
   };
 
@@ -299,11 +320,35 @@ const VoIPCRM = () => {
 
         {/* Call Records & AI Analysis */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          {/* Call Records */}
+          {/* Live Call Records from SippySoft */}
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle>Çağrı Kayıtları</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Phone className="text-blue-600" size={20} />
+                    Gerçek Zamanlı Çağrı Görünümü (Live)
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {loadingSippyCDRs && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                        Yükleniyor...
+                      </span>
+                    )}
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">
+                      SippySoft CDR
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={loadSippyCDRs}
+                      disabled={loadingSippyCDRs}
+                    >
+                      Yenile
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -312,24 +357,66 @@ const VoIPCRM = () => {
                       <tr>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Arayan</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Aranan</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Yön</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Durum</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Ülke/Şehir</th>
                         <th className="text-right py-2 px-3 font-semibold text-gray-700">Süre (sn)</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Tarih-Saat</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {callRecords.slice(0, 10).map(record => (
-                        <tr key={record.id} className="border-t hover:bg-gray-50">
-                          <td className="py-2 px-3">{record.caller_number}</td>
-                          <td className="py-2 px-3">{record.called_number}</td>
-                          <td className="py-2 px-3">{record.country} {record.city ? `/ ${record.city}` : ''}</td>
-                          <td className="text-right py-2 px-3">{record.duration}s</td>
-                          <td className="py-2 px-3">{new Date(record.call_date).toLocaleString('tr-TR')}</td>
+                      {sippyCDRs.length > 0 ? (
+                        sippyCDRs.slice(0, 20).map((record, index) => (
+                          <tr key={record.call_id || index} className="border-t hover:bg-blue-50 transition-colors">
+                            <td className="py-2 px-3 font-medium">{record.caller}</td>
+                            <td className="py-2 px-3">{record.callee}</td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                record.direction === 'inbound'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {record.direction === 'inbound' ? 'Gelen' : 'Giden'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                record.status === 'completed' || record.status === 'ANSWERED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {record.status}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-600">
+                              {record.country || '-'} {record.city ? `/ ${record.city}` : ''}
+                            </td>
+                            <td className="text-right py-2 px-3 font-mono">{record.duration}s</td>
+                            <td className="py-2 px-3 text-gray-600">
+                              {new Date(record.start_time).toLocaleString('tr-TR')}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="7" className="py-8 text-center text-gray-500">
+                            {loadingSippyCDRs ? 'Çağrı kayıtları yükleniyor...' : 'SippySoft\'tan çağrı kaydı bulunamadı'}
+                          </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
+                {sippyCDRs.length > 0 && (
+                  <div className="mt-4 pt-4 border-t text-sm text-gray-600">
+                    <div className="flex items-center justify-between">
+                      <span>Toplam {sippyCDRs.length} kayıt gösteriliyor</span>
+                      <span className="text-xs text-gray-500">
+                        Son güncelleme: {new Date().toLocaleTimeString('tr-TR')}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
