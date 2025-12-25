@@ -26,6 +26,8 @@ const VoIPCRM = () => {
   const [callRecords, setCallRecords] = useState([]);
   const [sippyCDRs, setSippyCDRs] = useState([]);
   const [loadingSippyCDRs, setLoadingSippyCDRs] = useState(false);
+  const [sippyStartDate, setSippyStartDate] = useState('');
+  const [sippyEndDate, setSippyEndDate] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [expandedDealers, setExpandedDealers] = useState(new Set());
   const [isPlaying, setIsPlaying] = useState(false);
@@ -65,9 +67,11 @@ const VoIPCRM = () => {
   const loadSippyCDRs = async () => {
     setLoadingSippyCDRs(true);
     try {
-      const sippyCdrsUrl = BACKEND_URL
-        ? `${BACKEND_URL}/api/sippy/cdrs?limit=100`
-        : `/api/sippy/cdrs?limit=100`;
+      const baseUrl = BACKEND_URL ? `${BACKEND_URL}/api/sippy/cdrs` : `/api/sippy/cdrs`;
+      const params = new URLSearchParams({ limit: '100' });
+      if (sippyStartDate.trim()) params.set('start_date', sippyStartDate.trim());
+      if (sippyEndDate.trim()) params.set('end_date', sippyEndDate.trim());
+      const sippyCdrsUrl = `${baseUrl}?${params.toString()}`;
       const response = await axios.get(sippyCdrsUrl);
       // Response format: { ok: bool, message: string, data: array, total: number }
       if (response.data && response.data.ok && response.data.data) {
@@ -346,6 +350,26 @@ const VoIPCRM = () => {
                         Yükleniyor...
                       </span>
                     )}
+                    <div className="hidden md:flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-gray-600">Başlangıç</Label>
+                        <Input
+                          value={sippyStartDate}
+                          onChange={(e) => setSippyStartDate(e.target.value)}
+                          placeholder="YYYYMMDDThh:mm:ss"
+                          className="h-8 w-[180px]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-gray-600">Bitiş</Label>
+                        <Input
+                          value={sippyEndDate}
+                          onChange={(e) => setSippyEndDate(e.target.value)}
+                          placeholder="YYYYMMDDThh:mm:ss"
+                          className="h-8 w-[180px]"
+                        />
+                      </div>
+                    </div>
                     <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">
                       SippySoft CDR
                     </span>

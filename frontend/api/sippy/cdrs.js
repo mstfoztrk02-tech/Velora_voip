@@ -124,6 +124,19 @@ function toStringOrUndefined(value) {
   return String(value);
 }
 
+function formatSippyUtcNow() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  // Use UTC, no timezone suffix
+  const yyyy = d.getUTCFullYear();
+  const mm = pad(d.getUTCMonth() + 1);
+  const dd = pad(d.getUTCDate());
+  const hh = pad(d.getUTCHours());
+  const mi = pad(d.getUTCMinutes());
+  const ss = pad(d.getUTCSeconds());
+  return `${yyyy}${mm}${dd}T${hh}:${mi}:${ss}`;
+}
+
 function transformCdr(record) {
   const callId = record?.i_xdr ?? record?.i_account ?? "";
   const billedDuration = record?.billed_duration ?? 0;
@@ -200,8 +213,10 @@ module.exports = async function handler(req, res) {
 
   const params = { type };
   if (iAccount !== undefined) params.i_account = iAccount;
-  if (startDate) params.start_date = startDate;
-  if (endDate) params.end_date = endDate;
+  // Date defaults: if not provided, fetch "all" by using a wide UTC window.
+  // Some Sippy versions/configurations do not return results for very old dates (e.g., 1970).
+  params.start_date = startDate || "20000101T00:00:00";
+  params.end_date = endDate || formatSippyUtcNow();
 
   try {
     const result = await callXmlRpc(rpcUrl, user, pass, "getAccountCDRs", [params], disableTlsVerify);

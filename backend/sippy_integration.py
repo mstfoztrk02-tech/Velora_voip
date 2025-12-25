@@ -48,6 +48,10 @@ class SippyCDRResponse(BaseModel):
     data: Optional[List[CDRRecord]] = None
     total: Optional[int] = None
 
+def format_sippy_datetime_utc(dt: datetime) -> str:
+    """Format datetime as Sippy ISO8601-like UTC string: YYYYMMDDThh:mm:ss (no timezone)."""
+    return dt.strftime('%Y%m%dT%H:%M:%S')
+
 def md5(data: str) -> str:
     """Generate MD5 hash"""
     return hashlib.md5(data.encode()).hexdigest()
@@ -302,8 +306,8 @@ async def get_call_records(
         limit: Maximum number of records (default: 100) - applied after fetching
         offset: Pagination offset (default: 0) - applied after fetching
         i_account: Account ID (integer) - required for specific account CDRs
-        start_date: Start date for CDR query (string, format depends on SippySoft config)
-        end_date: End date for CDR query (string, format depends on SippySoft config)
+        start_date: Start date for CDR query (string, Sippy expects UTC ISO8601-like: YYYYMMDDThh:mm:ss[.SSS])
+        end_date: End date for CDR query (string, Sippy expects UTC ISO8601-like: YYYYMMDDThh:mm:ss[.SSS])
         type: Type of CDRs (default: "all")
 
     Response fields (from PHP):
@@ -329,11 +333,19 @@ async def get_call_records(
         if i_account is not None:
             params["i_account"] = i_account
 
-        # Add dates only if explicitly provided by user
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
+        # Date defaults: if caller doesn't provide a range, fetch "all" by using a very wide UTC window.
+        effective_start_date = start_date
+        effective_end_date = end_date
+
+        if not effective_start_date:
+            # Some Sippy versions/configurations do not return results for very old dates (e.g., 1970).
+            # Use a safe early boundary that still represents "all" for typical deployments.
+            effective_start_date = "20000101T00:00:00"
+        if not effective_end_date:
+            effective_end_date = format_sippy_datetime_utc(datetime.utcnow())
+
+        params["start_date"] = effective_start_date
+        params["end_date"] = effective_end_date
 
         logger.info(f"Calling SippySoft getAccountCDRs with params: {params}")
 
