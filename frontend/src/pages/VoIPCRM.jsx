@@ -65,7 +65,10 @@ const VoIPCRM = () => {
   const loadSippyCDRs = async () => {
     setLoadingSippyCDRs(true);
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/sippy/cdrs?limit=100`);
+      const sippyCdrsUrl = BACKEND_URL
+        ? `${BACKEND_URL}/api/sippy/cdrs?limit=100`
+        : `/api/sippy/cdrs?limit=100`;
+      const response = await axios.get(sippyCdrsUrl);
       // Response format: { ok: bool, message: string, data: array, total: number }
       if (response.data && response.data.ok && response.data.data) {
         setSippyCDRs(response.data.data);

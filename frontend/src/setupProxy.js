@@ -17,6 +17,21 @@ module.exports = function(app) {
     }
   });
 
+  // Proxy /api/sippy/cdrs requests to Vercel serverless function
+  app.get('/api/sippy/cdrs', async (req, res) => {
+    try {
+      const handler = require('../api/sippy/cdrs.js');
+      await handler(req, res);
+    } catch (error) {
+      console.error('Error in /api/sippy/cdrs handler:', error);
+      res.status(500).json({
+        ok: false,
+        message: 'Internal server error',
+        details: error.message
+      });
+    }
+  });
+
   // Proxy /api/sippy requests to Vercel serverless function
   app.all('/api/sippy', async (req, res) => {
     try {

@@ -287,21 +287,28 @@ async def check_sippy_health():
 async def get_call_records(
     limit: int = 100,
     offset: int = 0,
-    i_customer: str = "",
-    recursive: bool = True,
-    order: Optional[str] = None
+    i_account: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    type: str = "all"
 ):
     """
-    Fetch Active Calls from SippySoft using listAllCalls XML-RPC method
+    Fetch CDR records from SippySoft using getAccountCDRs XML-RPC method
 
-    Based on: https://support.sippysoft.com/support/solutions/articles/107462-xml-rpc-api-manage-active-calls
+    Based on PHP implementation:
+        getAccountCDRs($i_account, $start_date, $end_date, $type)
 
     Query Parameters:
         limit: Maximum number of records (default: 100) - applied after fetching
         offset: Pagination offset (default: 0) - applied after fetching
-        i_customer: Customer ID filter (default: "" for root customer)
-        recursive: Include subcustomer calls (default: True)
-        order: Sort order - oldest_first, oldest_last, longest_first, longest_last
+        i_account: Account ID (integer) - required for specific account CDRs
+        start_date: Start date for CDR query (string, format depends on SippySoft config)
+        end_date: End date for CDR query (string, format depends on SippySoft config)
+        type: Type of CDRs (default: "all")
+
+    Response fields (from PHP):
+        description, connect_time, setup_time, cost, result, cli_in, cld_in,
+        billed_duration, cli, cld, country, i_account, remote_ip
     """
     if not SIPPY_RPC_URL or not SIPPY_RPC_USER or not SIPPY_RPC_PASS:
         return SippyCDRResponse(
@@ -312,55 +319,83 @@ async def get_call_records(
         )
 
     try:
-        # Prepare parameters for listAllCalls
+        # Prepare parameters for getAccountCDRs (matching PHP structure exactly)
+        # PHP: array("i_account" => int, "start_date" => string, "end_date" => string, "type" => string)
         params = {
-            "i_customer": i_customer,
-            "recursive": recursive
+            "type": type
         }
 
-        if order:
-            params["order"] = order
+        # Add i_account as integer (required in PHP code)
+        if i_account is not None:
+            params["i_account"] = i_account
 
-        logger.info(f"Calling SippySoft listAllCalls with params: {params}")
+        # Add dates only if explicitly provided by user
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
 
-        # Call SippySoft listAllCalls method
+        logger.info(f"Calling SippySoft getAccountCDRs with params: {params}")
+
+        # Call SippySoft getAccountCDRs method
         result = await call_xmlrpc(
             SIPPY_RPC_URL,
             SIPPY_RPC_USER,
             SIPPY_RPC_PASS,
-            "listAllCalls",
+            "getAccountCDRs",
             [params],
             SIPPY_DISABLE_TLS_VERIFY
         )
 
-        logger.info(f"Successfully fetched {len(result) if isinstance(result, list) else 0} calls from SippySoft")
+        # Parse getAccountCDRs response
+        # Response format: {"cdrs": [...], "result": "OK"}
+        cdr_records = []
+        if isinstance(result, dict):
+            cdr_records = result.get('cdrs', [])
+            logger.info(f"Successfully fetched {len(cdr_records)} CDRs from SippySoft")
+        elif isinstance(result, list):
+            cdr_records = result
+            logger.info(f"Successfully fetched {len(cdr_records)} CDRs from SippySoft (list format)")
+        else:
+            logger.warning(f"Unexpected result type: {type(result)}")
 
         # Transform result to CDR records
         cdr_list = []
 
-        if isinstance(result, list):
-            for record in result:
-                if isinstance(record, dict):
-                    # Parse SippySoft listAllCalls response format
-                    # Fields: CLI, CLD, CALL_ID, DURATION, CC_STATE, I_ACCOUNT,
-                    #         CALLER_MEDIA_IP, CALLEE_MEDIA_IP, SETUP_TIME, DIRECTION, NODE_ID
+        for record in cdr_records:
+            if isinstance(record, dict):
+                # Parse SippySoft getAccountCDRs response format
+                # PHP Example Output:
+                #   description: "Turkcell Mobile"
+                #   connect_time: "14:41:18.000 GMT Fri Jan 3 2025"
+                #   setup_time: "14:41:06.000 GMT Fri Jan 3 2025"
+                #   cost: 0.55
+                #   result: 0 (0=success, other=failed)
+                #   cli_in: "anonymous"
+                #   cld_in: "905355949961"
+                #   billed_duration: 60
+                #   cli: "anonymous"
+                #   cld: "905355949961"
+                #   country: "TURKEY"
+                #   i_account: 3754
+                #   remote_ip: "185.8.12.115"
 
-                    cdr = CDRRecord(
-                        call_id=str(record.get('CALL_ID') or record.get('call_id') or ''),
-                        caller=record.get('CLI') or record.get('caller') or 'Unknown',
-                        callee=record.get('CLD') or record.get('callee') or 'Unknown',
-                        start_time=record.get('SETUP_TIME') or record.get('setup_time') or datetime.utcnow().isoformat(),
-                        end_time=None,  # Active calls don't have end time yet
-                        duration=int(record.get('DURATION') or record.get('duration') or 0),
-                        status=record.get('CC_STATE') or record.get('status') or 'active',
-                        direction=record.get('DIRECTION') or ('inbound' if record.get('incoming') else 'outbound'),
-                        country=record.get('country'),
-                        city=record.get('city') or record.get('region'),
-                        cost=float(record.get('cost') or 0),
-                        trunk=str(record.get('I_ACCOUNT') or record.get('i_account') or ''),
-                        codec=record.get('codec')
-                    )
-                    cdr_list.append(cdr)
+                cdr = CDRRecord(
+                    call_id=str(record.get('i_xdr') or record.get('i_account') or ''),
+                    caller=record.get('cli') or record.get('cli_in') or 'Unknown',
+                    callee=record.get('cld') or record.get('cld_in') or 'Unknown',
+                    start_time=record.get('setup_time') or datetime.utcnow().isoformat(),
+                    end_time=record.get('connect_time'),
+                    duration=int(record.get('billed_duration') or 0),
+                    status='completed' if record.get('result') == 0 else 'failed',
+                    direction='outbound',  # Can be enhanced based on cli/cld analysis
+                    country=record.get('country'),
+                    city=record.get('description'),  # PHP shows "Turkcell Mobile" in description
+                    cost=float(record.get('cost') or 0),
+                    trunk=str(record.get('i_account') or ''),
+                    codec=record.get('codec') or record.get('remote_ip', '')[:20]  # Using remote_ip if codec not available
+                )
+                cdr_list.append(cdr)
 
         # Apply limit and offset (client-side pagination)
         start = offset
