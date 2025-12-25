@@ -52,8 +52,7 @@ const VoIPCRMAdvanced = () => {
   const [sippyCDRs, setSippyCDRs] = useState([]);
   const [loadingSippyCDRs, setLoadingSippyCDRs] = useState(false);
   const [sippyCDRTotal, setSippyCDRTotal] = useState(0);
-  const [sippyStartDate, setSippyStartDate] = useState('');
-  const [sippyEndDate, setSippyEndDate] = useState('');
+  const [selectedSippyPreset, setSelectedSippyPreset] = useState(null);
   const [activeCalls, setActiveCalls] = useState([]);
   const [tariffs, setTariffs] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -228,13 +227,20 @@ const VoIPCRMAdvanced = () => {
     return { start: formatSippyUtc(start), end: formatSippyUtc(end) };
   };
 
+  const getUtcRangeBackDaysInclusive = (daysBack = 7) => {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysBack, 0, 0, 0));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+    return { start: formatSippyUtc(start), end: formatSippyUtc(end) };
+  };
+
   const loadSippyCDRs = async (override = {}) => {
     setLoadingSippyCDRs(true);
     try {
       const baseUrl = `/api/sippy/cdrs`;
       const params = new URLSearchParams({ limit: '1000' });
-      const start = (override.start_date ?? sippyStartDate).trim();
-      const end = (override.end_date ?? sippyEndDate).trim();
+      const start = (override.start_date ?? '').trim();
+      const end = (override.end_date ?? '').trim();
       if (start) params.set('start_date', start);
       if (end) params.set('end_date', end);
 
@@ -257,16 +263,26 @@ const VoIPCRMAdvanced = () => {
   };
 
   const applySippyPreset = (preset) => {
-    if (preset === 'clear') {
-      setSippyStartDate('');
-      setSippyEndDate('');
-      loadSippyCDRs({ start_date: '', end_date: '' });
+    setSelectedSippyPreset(preset);
+    if (preset === 'today') {
+      const { start, end } = getUtcDayRange(0);
+      loadSippyCDRs({ start_date: start, end_date: end });
       return;
     }
-    const { start, end } = preset === 'today' ? getUtcDayRange(0) : getUtcDayRange(1);
-    setSippyStartDate(start);
-    setSippyEndDate(end);
-    loadSippyCDRs({ start_date: start, end_date: end });
+    if (preset === 'yesterday') {
+      const { start, end } = getUtcDayRange(1);
+      loadSippyCDRs({ start_date: start, end_date: end });
+      return;
+    }
+    if (preset === 'last_week') {
+      const { start, end } = getUtcRangeBackDaysInclusive(7);
+      loadSippyCDRs({ start_date: start, end_date: end });
+      return;
+    }
+    if (preset === 'last_month') {
+      const { start, end } = getUtcRangeBackDaysInclusive(30);
+      loadSippyCDRs({ start_date: start, end_date: end });
+    }
   };
   
   const handleLoginSuccess = (user) => {
@@ -1646,36 +1662,52 @@ Tone: Trust-building, non-pushy, confident, solution-oriented`}
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <Button size="sm" variant="outline" onClick={() => applySippyPreset('today')} disabled={loadingSippyCDRs}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applySippyPreset('today')}
+                    disabled={loadingSippyCDRs}
+                    className={selectedSippyPreset === 'today' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+                  >
                     Bugün
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => applySippyPreset('yesterday')} disabled={loadingSippyCDRs}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applySippyPreset('yesterday')}
+                    disabled={loadingSippyCDRs}
+                    className={selectedSippyPreset === 'yesterday' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+                  >
                     Dün
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => applySippyPreset('clear')} disabled={loadingSippyCDRs}>
-                    Temizle
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applySippyPreset('last_week')}
+                    disabled={loadingSippyCDRs}
+                    className={selectedSippyPreset === 'last_week' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+                  >
+                    Geçen Hafta
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applySippyPreset('last_month')}
+                    disabled={loadingSippyCDRs}
+                    className={selectedSippyPreset === 'last_month' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+                  >
+                    Geçen Ay
                   </Button>
 
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-gray-600">Başlangıç</Label>
-                    <Input
-                      value={sippyStartDate}
-                      onChange={(e) => setSippyStartDate(e.target.value)}
-                      placeholder="YYYYMMDDThh:mm:ss"
-                      className="h-8 w-[180px]"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-gray-600">Bitiş</Label>
-                    <Input
-                      value={sippyEndDate}
-                      onChange={(e) => setSippyEndDate(e.target.value)}
-                      placeholder="YYYYMMDDThh:mm:ss"
-                      className="h-8 w-[180px]"
-                    />
-                  </div>
-
-                  <Button size="sm" variant="outline" onClick={() => loadSippyCDRs()} disabled={loadingSippyCDRs}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedSippyPreset(null);
+                      loadSippyCDRs();
+                    }}
+                    disabled={loadingSippyCDRs}
+                  >
                     Yenile
                   </Button>
                 </div>
