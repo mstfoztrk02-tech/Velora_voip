@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import {
   Users, Phone, Clock, ArrowLeft, Plus, Play, Pause, Volume2, VolumeX,
   ChevronDown, ChevronRight, Settings, TrendingUp, AlertTriangle, Brain,
@@ -48,6 +49,11 @@ const VoIPCRMAdvanced = () => {
   const [customers, setCustomers] = useState([]);
   const [users, setUsers] = useState([]);
   const [callRecords, setCallRecords] = useState([]);
+  const [sippyCDRs, setSippyCDRs] = useState([]);
+  const [loadingSippyCDRs, setLoadingSippyCDRs] = useState(false);
+  const [sippyCDRTotal, setSippyCDRTotal] = useState(0);
+  const [sippyStartDate, setSippyStartDate] = useState('');
+  const [sippyEndDate, setSippyEndDate] = useState('');
   const [activeCalls, setActiveCalls] = useState([]);
   const [tariffs, setTariffs] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -93,11 +99,20 @@ const VoIPCRMAdvanced = () => {
         setShowPackageSelection(true);
       } else {
         loadData();
+        // Live calls are refreshed frequently; CDRs less frequently.
         const interval = setInterval(() => {
           loadActiveCalls();
           loadLiveCalls();
         }, 3000);
-        return () => clearInterval(interval);
+
+        const cdrInterval = setInterval(() => {
+          loadSippyCDRs();
+        }, 30000);
+
+        return () => {
+          clearInterval(interval);
+          clearInterval(cdrInterval);
+        };
       }
     }
   }, [isAuthenticated]);
@@ -122,6 +137,9 @@ const VoIPCRMAdvanced = () => {
       setCallRecords(data.callRecords);
       setActiveCalls(data.activeCalls);
       setTariffs(data.tariffs);
+
+      // Also fetch Sippy CDRs (same-origin API route)
+      loadSippyCDRs();
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
@@ -190,6 +208,65 @@ const VoIPCRMAdvanced = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatSippyUtc = (date) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const yyyy = date.getUTCFullYear();
+    const mm = pad(date.getUTCMonth() + 1);
+    const dd = pad(date.getUTCDate());
+    const hh = pad(date.getUTCHours());
+    const mi = pad(date.getUTCMinutes());
+    const ss = pad(date.getUTCSeconds());
+    return `${yyyy}${mm}${dd}T${hh}:${mi}:${ss}`;
+  };
+
+  const getUtcDayRange = (daysAgo = 0) => {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo, 0, 0, 0));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo + 1, 0, 0, 0));
+    return { start: formatSippyUtc(start), end: formatSippyUtc(end) };
+  };
+
+  const loadSippyCDRs = async (override = {}) => {
+    setLoadingSippyCDRs(true);
+    try {
+      const baseUrl = `/api/sippy/cdrs`;
+      const params = new URLSearchParams({ limit: '1000' });
+      const start = (override.start_date ?? sippyStartDate).trim();
+      const end = (override.end_date ?? sippyEndDate).trim();
+      if (start) params.set('start_date', start);
+      if (end) params.set('end_date', end);
+
+      const url = `${baseUrl}?${params.toString()}`;
+      const response = await axios.get(url);
+      if (response.data && response.data.ok && Array.isArray(response.data.data)) {
+        setSippyCDRs(response.data.data);
+        setSippyCDRTotal(Number.isFinite(Number(response.data.total)) ? Number(response.data.total) : response.data.data.length);
+      } else {
+        setSippyCDRs([]);
+        setSippyCDRTotal(0);
+      }
+    } catch (error) {
+      console.error('Error loading Sippy CDRs:', error);
+      setSippyCDRs([]);
+      setSippyCDRTotal(0);
+    } finally {
+      setLoadingSippyCDRs(false);
+    }
+  };
+
+  const applySippyPreset = (preset) => {
+    if (preset === 'clear') {
+      setSippyStartDate('');
+      setSippyEndDate('');
+      loadSippyCDRs({ start_date: '', end_date: '' });
+      return;
+    }
+    const { start, end } = preset === 'today' ? getUtcDayRange(0) : getUtcDayRange(1);
+    setSippyStartDate(start);
+    setSippyEndDate(end);
+    loadSippyCDRs({ start_date: start, end_date: end });
   };
   
   const handleLoginSuccess = (user) => {
@@ -1556,49 +1633,106 @@ Tone: Trust-building, non-pushy, confident, solution-oriented`}
                     <FileText className="mr-2" size={20} />
                     Çağrı Detay Kayıtları (CDR)
                   </span>
-                  <span className="text-sm text-gray-500">{callRecords.length} kayıt</span>
+                  <div className="flex items-center gap-2">
+                    {loadingSippyCDRs && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <Loader2 className="animate-spin" size={14} />
+                        Yükleniyor...
+                      </span>
+                    )}
+                    <span className="text-sm text-gray-500">{sippyCDRs.length} / {sippyCDRTotal} kayıt</span>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <Button size="sm" variant="outline" onClick={() => applySippyPreset('today')} disabled={loadingSippyCDRs}>
+                    Bugün
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => applySippyPreset('yesterday')} disabled={loadingSippyCDRs}>
+                    Dün
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => applySippyPreset('clear')} disabled={loadingSippyCDRs}>
+                    Temizle
+                  </Button>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-gray-600">Başlangıç</Label>
+                    <Input
+                      value={sippyStartDate}
+                      onChange={(e) => setSippyStartDate(e.target.value)}
+                      placeholder="YYYYMMDDThh:mm:ss"
+                      className="h-8 w-[180px]"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-gray-600">Bitiş</Label>
+                    <Input
+                      value={sippyEndDate}
+                      onChange={(e) => setSippyEndDate(e.target.value)}
+                      placeholder="YYYYMMDDThh:mm:ss"
+                      className="h-8 w-[180px]"
+                    />
+                  </div>
+
+                  <Button size="sm" variant="outline" onClick={() => loadSippyCDRs()} disabled={loadingSippyCDRs}>
+                    Yenile
+                  </Button>
+                </div>
                 <div className="overflow-x-auto max-h-96">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Arayan</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Aranan</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Yön</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Durum</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Ülke/Şehir</th>
-                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Codec</th>
-                        <th className="text-right py-2 px-3 font-semibold text-gray-700">Süre</th>
+                        <th className="text-right py-2 px-3 font-semibold text-gray-700">Süre (sn)</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Tarih</th>
-                        <th className="text-center py-2 px-3 font-semibold text-gray-700">AI</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {callRecords.slice(0, 20).map(record => (
-                        <tr 
-                          key={record.id} 
-                          className="border-t hover:bg-gray-50 cursor-pointer"
-                          onClick={() => setSelectedCallRecord(record)}
-                        >
-                          <td className="py-2 px-3">{record.caller_number}</td>
-                          <td className="py-2 px-3">{record.called_number}</td>
-                          <td className="py-2 px-3 text-xs">{record.country} / {record.city}</td>
-                          <td className="py-2 px-3">
-                            <span className="bg-gray-100 px-2 py-0.5 rounded text-xs">
-                              {record.codec}
-                            </span>
-                          </td>
-                          <td className="text-right py-2 px-3 font-mono">
-                            {formatDuration(record.duration)}
-                          </td>
-                          <td className="py-2 px-3 text-xs">
-                            {new Date(record.call_date).toLocaleString('tr-TR')}
-                          </td>
-                          <td className="text-center py-2 px-3">
-                            <Brain className="mx-auto text-purple-600" size={16} />
+                      {sippyCDRs.length > 0 ? (
+                        sippyCDRs.map((record, index) => (
+                          <tr
+                            key={record.call_id || index}
+                            className="border-t hover:bg-gray-50"
+                          >
+                            <td className="py-2 px-3">{record.caller || '-'}</td>
+                            <td className="py-2 px-3">{record.callee || '-'}</td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                record.direction === 'inbound'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {record.direction === 'inbound' ? 'Gelen' : 'Giden'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                record.status === 'completed' || record.status === 'ANSWERED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {record.status || '-'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-xs">{record.country || '-'}{record.city ? ` / ${record.city}` : ''}</td>
+                            <td className="text-right py-2 px-3 font-mono">{Number(record.duration || 0)}s</td>
+                            <td className="py-2 px-3 text-xs">
+                              {record.start_time ? new Date(record.start_time).toLocaleString('tr-TR') : '-'}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-gray-500">
+                            {loadingSippyCDRs ? 'Çağrı kayıtları yükleniyor...' : 'SippySoft\'tan çağrı kaydı bulunamadı'}
                           </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
