@@ -41,6 +41,15 @@ const mmService = {
     // Keep the existing caller contract (per-number results)
     return cleanPhones.map((phone) => ({ ok: true, phone, data: res.data }));
   },
+
+  /**
+   * Triggers calling unreached numbers immediately.
+   * Backend proxy route: POST /api/mm/call_unreached_numbers
+   */
+  async callUnreachedNumbersNow() {
+    const res = await api.post("/api/mm/call_unreached_numbers");
+    return res.data;
+  },
 };
 
 export default mmService;

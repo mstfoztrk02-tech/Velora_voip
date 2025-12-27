@@ -773,25 +773,30 @@ const VoIPCRMAdvanced = () => {
     }
 
     try {
-      console.log("✅ Validation passed, starting dialer...");
+      console.log("✅ Validation passed, triggering MM call_unreached_numbers...");
       setIsAutoDialerRunning(true);
 
-      toast({
-        title: "Başarılı",
-        description: `${selectedCallCount} arama başlatılıyor...`,
-      });
+      const result = await mmService.callUnreachedNumbersNow();
 
-      // ElevenLabs ile aramaları başlat
-      await startCallingWithElevenLabs();
+      toast({
+        title: result?.status === "OK" ? "✅ Başarılı" : "Bilgi",
+        description:
+          result?.message ||
+          "Aranmayan numaralar için tetikleme isteği gönderildi.",
+      });
     } catch (error) {
       console.error("❌ Error in handleStartAutoDialer:", error);
-      setIsAutoDialerRunning(false);
       toast({
         title: "Hata",
         description:
-          error.message || "Otomatik arama başlatılırken bir hata oluştu.",
+          error?.response?.data?.detail?.message ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          "Otomatik arama başlatılırken bir hata oluştu.",
         variant: "destructive",
       });
+    } finally {
+      setIsAutoDialerRunning(false);
     }
   };
 
