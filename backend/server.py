@@ -14,6 +14,7 @@ import httpx
 from voip_crm import router as voip_crm_router
 from platinum_campaigns import router as platinum_router
 from sippy_integration import router as sippy_router
+from mm_integration import router as mm_router
 
 
 ROOT_DIR = Path(__file__).parent
@@ -282,6 +283,7 @@ app.include_router(api_router)
 app.include_router(voip_crm_router)
 app.include_router(platinum_router)
 app.include_router(sippy_router)
+app.include_router(mm_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,0 +1,14 @@
+nohup: ignoring input
+INFO:     Started server process [27312]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57364 - "GET /api/ HTTP/1.1" 200 OK
+2025-12-27 15:46:27,352 - sippy_integration - INFO - Calling SippySoft getAccountCDRs with params: {'type': 'all', 'start_date': '20251227T00:00:00', 'end_date': '20251228T00:00:00'}
+2025-12-27 15:46:27,614 - httpx - INFO - HTTP Request: POST https://185.8.12.118/xmlapi/xmlapi "HTTP/1.1 401 Unauthorized"
+INFO:     127.0.0.1:63039 - "GET /api/ HTTP/1.1" 200 OK
+2025-12-27 15:46:28,580 - httpx - INFO - HTTP Request: POST https://185.8.12.118/xmlapi/xmlapi "HTTP/1.1 200 OK"
+2025-12-27 15:46:28,583 - sippy_integration - INFO - Successfully fetched 0 CDRs from SippySoft
+2025-12-27 15:46:28,583 - sippy_integration - INFO - Returning 0 calls (offset: 0, limit: 1000)
+INFO:     127.0.0.1:62275 - "GET /api/sippy/cdrs?limit=1000&start_date=20251227T00%3A00%3A00&end_date=20251228T00%3A00%3A00 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61266 - "GET /api/ HTTP/1.1" 200 OK

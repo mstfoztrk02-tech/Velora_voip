@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select } from '../components/ui/select';
 import axios from 'axios';
+import api from '../services/apiClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -94,7 +95,7 @@ const VoIPCRM = () => {
       if (start) params.set('start_date', start);
       if (end) params.set('end_date', end);
       const sippyCdrsUrl = `${baseUrl}?${params.toString()}`;
-      const response = await axios.get(sippyCdrsUrl);
+      const response = await api.get(sippyCdrsUrl);
       // Response format: { ok: bool, message: string, data: array, total: number }
       if (response.data && response.data.ok && response.data.data) {
         setSippyCDRs(response.data.data);

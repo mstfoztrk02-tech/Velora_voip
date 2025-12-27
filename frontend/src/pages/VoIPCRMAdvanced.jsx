@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import api from "../services/apiClient";
 import {
   Users,
   Phone,
@@ -56,6 +57,7 @@ import packageService, { PACKAGES } from "../services/packageService";
 import integrationService from "../services/integrationService";
 import crmService from "../services/crmService";
 import autoDialerService from "../services/autoDialerService";
+import mmService from "../services/mmService";
 import {
   Select,
   SelectContent,
@@ -69,10 +71,17 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import * as XLSX from "xlsx";
 
 const VoIPCRMAdvanced = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Temporarily disable VoIP CRM backend calls from this page.
+  // This prevents repeated/failed requests to:
+  // /statistics, /dealers, /customers, /users, /call-records, /active-calls, /tariffs
+  const DISABLE_VOIP_CRM_API = true;
 
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -96,6 +105,8 @@ const VoIPCRMAdvanced = () => {
   const [loadingSippyCDRs, setLoadingSippyCDRs] = useState(false);
   const [sippyCDRTotal, setSippyCDRTotal] = useState(0);
   const [selectedSippyPreset, setSelectedSippyPreset] = useState(null);
+  const [sippyStartDate, setSippyStartDate] = useState("");
+  const [sippyEndDate, setSippyEndDate] = useState("");
   const [activeCalls, setActiveCalls] = useState([]);
   const [tariffs, setTariffs] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -145,8 +156,9 @@ const VoIPCRMAdvanced = () => {
       } else {
         loadData();
         // Live calls are refreshed frequently; CDRs less frequently.
+        // NOTE: Active calls polling is intentionally disabled to avoid spamming
+        // `/api/voip-crm/active-calls` from the frontend.
         const interval = setInterval(() => {
-          loadActiveCalls();
           loadLiveCalls();
         }, 3000);
 
@@ -172,6 +184,23 @@ const VoIPCRMAdvanced = () => {
   };
 
   const loadData = async () => {
+    if (DISABLE_VOIP_CRM_API) {
+      setStats({
+        total_dealers: 0,
+        total_customers: 0,
+        total_users: 0,
+        active_calls: 0,
+        total_call_duration_minutes: 0,
+        total_calls: 0,
+      });
+      setDealers([]);
+      setCustomers([]);
+      setUsers([]);
+      setCallRecords([]);
+      setActiveCalls([]);
+      setTariffs([]);
+      return;
+    }
     try {
       const data = await crmService.loadAllData();
 
@@ -196,6 +225,7 @@ const VoIPCRMAdvanced = () => {
   };
 
   const loadActiveCalls = async () => {
+    if (DISABLE_VOIP_CRM_API) return;
     try {
       const calls = await crmService.getActiveCalls();
       setActiveCalls(calls);
@@ -233,6 +263,13 @@ const VoIPCRMAdvanced = () => {
   };
 
   const terminateCall = async (callId) => {
+    if (DISABLE_VOIP_CRM_API) {
+      toast({
+        title: "Bilgi",
+        description: "Active calls API bu sayfada devre dışı.",
+      });
+      return;
+    }
     try {
       await crmService.terminateCall(callId);
       toast({
@@ -321,13 +358,13 @@ const VoIPCRMAdvanced = () => {
     try {
       const baseUrl = `/api/sippy/cdrs`;
       const params = new URLSearchParams({ limit: "1000" });
-      const start = (override.start_date ?? "").trim();
-      const end = (override.end_date ?? "").trim();
+      const start = (override.start_date ?? sippyStartDate ?? "").trim();
+      const end = (override.end_date ?? sippyEndDate ?? "").trim();
       if (start) params.set("start_date", start);
       if (end) params.set("end_date", end);
 
       const url = `${baseUrl}?${params.toString()}`;
-      const response = await axios.get(url);
+      const response = await api.get(url);
       if (
         response.data &&
         response.data.ok &&
@@ -356,23 +393,77 @@ const VoIPCRMAdvanced = () => {
     setSelectedSippyPreset(preset);
     if (preset === "today") {
       const { start, end } = getUtcDayRange(0);
+      setSippyStartDate(start);
+      setSippyEndDate(end);
       loadSippyCDRs({ start_date: start, end_date: end });
       return;
     }
     if (preset === "yesterday") {
       const { start, end } = getUtcDayRange(1);
+      setSippyStartDate(start);
+      setSippyEndDate(end);
       loadSippyCDRs({ start_date: start, end_date: end });
       return;
     }
     if (preset === "last_week") {
       const { start, end } = getUtcRangeBackDaysInclusive(7);
+      setSippyStartDate(start);
+      setSippyEndDate(end);
       loadSippyCDRs({ start_date: start, end_date: end });
       return;
     }
     if (preset === "last_month") {
       const { start, end } = getUtcRangeBackDaysInclusive(30);
+      setSippyStartDate(start);
+      setSippyEndDate(end);
       loadSippyCDRs({ start_date: start, end_date: end });
     }
+  };
+
+  const handleSippyListByDateRange = () => {
+    const start = startDate || endDate;
+    const end = endDate || startDate;
+
+    if (!start) {
+      toast({
+        title: "Bilgi",
+        description: "Lütfen başlangıç/bitiş tarihi seçin.",
+      });
+      return;
+    }
+
+    if (end && end < start) {
+      toast({
+        title: "Hata",
+        description: "Bitiş tarihi başlangıçtan önce olamaz.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Treat selected dates as whole-day range in UTC: [start 00:00, end+1 00:00)
+    const startUtc = new Date(
+      Date.UTC(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0)
+    );
+    const endBase = end || start;
+    const endUtcExclusive = new Date(
+      Date.UTC(
+        endBase.getFullYear(),
+        endBase.getMonth(),
+        endBase.getDate() + 1,
+        0,
+        0,
+        0
+      )
+    );
+
+    const startStr = formatSippyUtc(startUtc);
+    const endStr = formatSippyUtc(endUtcExclusive);
+
+    setSelectedSippyPreset(null);
+    setSippyStartDate(startStr);
+    setSippyEndDate(endStr);
+    loadSippyCDRs({ start_date: startStr, end_date: endStr });
   };
 
   const handleLoginSuccess = (user) => {
@@ -490,7 +581,7 @@ const VoIPCRMAdvanced = () => {
     loadCachedNumbers();
   }, []);
 
-  const handleAddNumber = () => {
+  const handleAddNumber = async () => {
     if (!newPhoneNumber.trim()) {
       toast({
         title: "Hata",
@@ -501,18 +592,25 @@ const VoIPCRMAdvanced = () => {
     }
 
     try {
-      addNumberToCache(newPhoneNumber.trim());
+      const phone = newPhoneNumber.trim();
+      const result = await mmService.addNumberToCall(phone);
+
+      // Keep existing auto-dialer UX (local list) while also sending to MM API.
+      addNumberToCache(phone);
 
       toast({
         title: "Başarılı",
-        description: "Numara cache'e eklendi.",
+        description: result?.message || "Numaralar Eklendi",
       });
       setNewPhoneNumber("");
       setShowAddNumberModal(false);
     } catch (error) {
       toast({
         title: "Hata",
-        description: "Numara eklenirken bir hata oluştu.",
+        description:
+          error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          "Numara eklenirken bir hata oluştu.",
         variant: "destructive",
       });
     }
@@ -522,16 +620,76 @@ const VoIPCRMAdvanced = () => {
     const file = event.target.files[0];
     if (!file) return;
 
+    const fileName = String(file.name || "").toLowerCase();
+    const isCsvOrText = fileName.endsWith(".csv") || fileName.endsWith(".txt");
+
     // Excel/CSV dosyasını okumak için FileReader kullanıyoruz
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const text = e.target.result;
-        // CSV formatında okuyoruz
-        const lines = text.split("\n");
-        const phoneNumbers = lines
-          .map((line) => line.trim())
-          .filter((line) => line && /^\+?\d+$/.test(line)); // Sadece numara içeren satırlar
+        const normalizePhone = (value) => {
+          if (value === null || value === undefined) return "";
+          let raw = value;
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            raw = String(Math.trunc(raw));
+          } else {
+            raw = String(raw).trim();
+          }
+
+          // Handle scientific notation coming from Excel (e.g. 5.338e+09)
+          if (/e\+?/i.test(raw)) {
+            const n = Number(raw);
+            if (Number.isFinite(n)) raw = String(Math.trunc(n));
+          }
+
+          // Keep leading + (optional), strip other non-digits
+          const hasPlus = raw.startsWith("+");
+          const digits = raw.replace(/\D/g, "");
+          if (!digits) return "";
+          return hasPlus ? `+${digits}` : digits;
+        };
+
+        let phoneNumbers = [];
+
+        if (isCsvOrText) {
+          const text = String(e.target.result || "");
+          const lines = text.split(/\r?\n/);
+          phoneNumbers = lines
+            .map((line) => normalizePhone(line))
+            .filter((p) => p && /^\+?\d+$/.test(p));
+        } else {
+          const buffer = e.target.result;
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const sheetName = workbook.SheetNames?.[0];
+          if (!sheetName) {
+            toast({
+              title: "Hata",
+              description: "Excel dosyasında sayfa bulunamadı.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          const worksheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            defval: "",
+            blankrows: false,
+            raw: true,
+          });
+
+          phoneNumbers = rows
+            .map((row) => normalizePhone(Array.isArray(row) ? row[0] : ""))
+            .filter((p) => p && /^\+?\d+$/.test(p));
+        }
+
+        // De-duplicate while keeping order
+        const seen = new Set();
+        phoneNumbers = phoneNumbers.filter((p) => {
+          if (seen.has(p)) return false;
+          seen.add(p);
+          return true;
+        });
 
         if (phoneNumbers.length === 0) {
           toast({
@@ -541,6 +699,9 @@ const VoIPCRMAdvanced = () => {
           });
           return;
         }
+
+        const results = await mmService.addNumbersToCallBulk(phoneNumbers);
+        const successCount = results.filter((r) => r.ok).length;
 
         // Tüm numaraları cache'e ekle
         const currentNumbers = loadCachedNumbers();
@@ -556,7 +717,7 @@ const VoIPCRMAdvanced = () => {
 
         toast({
           title: "Başarılı",
-          description: `${phoneNumbers.length} numara cache'e eklendi.`,
+          description: `${successCount}/${phoneNumbers.length} numara eklendi`,
         });
 
         // File input'u sıfırla
@@ -569,7 +730,11 @@ const VoIPCRMAdvanced = () => {
         });
       }
     };
-    reader.readAsText(file);
+    if (isCsvOrText) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const handleStartAutoDialer = async () => {
@@ -1258,7 +1423,7 @@ const VoIPCRMAdvanced = () => {
                   <input
                     id="excel-upload"
                     type="file"
-                    accept=".csv,.txt"
+                    accept=".csv,.txt,.xlsx,.xls"
                     onChange={handleExcelUpload}
                     className="hidden"
                   />
@@ -1542,7 +1707,13 @@ Tone: Trust-building, non-pushy, confident, solution-oriented`}
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline">Listele</Button>
+                <Button
+                  variant="outline"
+                  onClick={handleSippyListByDateRange}
+                  disabled={loadingSippyCDRs}
+                >
+                  Listele
+                </Button>
               </div>
             </div>
           </CardHeader>

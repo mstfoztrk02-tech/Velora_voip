@@ -1,0 +1,6 @@
+INFO:     Will watch for changes in these directories: ['D:\\Projects\\Velora_voip-main\\Velora_voip-main\\backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [28952] using WatchFiles
+INFO:     Started server process [17096]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
