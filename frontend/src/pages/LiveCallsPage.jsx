@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, PhoneOff, RefreshCw, Filter, Search, Loader2, Info } from 'lucide-react';
+import { ArrowLeft, Phone, PhoneOff, RefreshCw, Filter, Search, Loader2, Info, Sparkles, X } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useToast } from '../hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 
 const LiveCallsPage = () => {
   const navigate = useNavigate();
@@ -15,7 +22,12 @@ const LiveCallsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedCall, setSelectedCall] = useState(null);
+  const [aiCallLoading, setAiCallLoading] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const intervalRef = useRef(null);
+
+  const ALLOWED_NUMBER = '5338864656'; // İzin verilen numara (sadece rakamlar)
 
   // Generate mock calls
   const generateMockCalls = () => {
@@ -111,9 +123,9 @@ const LiveCallsPage = () => {
 
   const handleTerminateCall = (call) => {
     if (call.status === 'ended') return;
-    
+
     if (!window.confirm(`${call.caller} numaralı çağrıyı sonlandırmak istiyor musunuz?`)) return;
-    
+
     setLoading(true);
     setTimeout(() => {
       // Update call status to ended
@@ -122,15 +134,73 @@ const LiveCallsPage = () => {
           c.id === call.id ? { ...c, status: 'ended' } : c
         )
       );
-      
+
       toast({
         title: "✅ Demo: Çağrı Sonlandırıldı",
         description: `CallID: ${call.callId}`
       });
-      
+
       setLoading(false);
       setSelectedCall(null);
     }, 800);
+  };
+
+  const handleAICall = () => {
+    setShowAIModal(true);
+    setPhoneNumber('');
+  };
+
+  const handleStartCall = async () => {
+    // Telefon numarasını temizle (sadece rakamlar)
+    const cleanNumber = phoneNumber.replace(/\s+/g, '').replace(/\D/g, '');
+
+    setAiCallLoading(true);
+
+    // İzin verilen numara girildiğinde asıl aranacak numara
+    const targetNumber = cleanNumber;
+
+    try {
+      const response = await fetch('api/elevenlabs/outbound-call', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentId: 'agent_4101kd09w180fd9s1m3vh1evhwnr',
+          agentPhoneNumberId: 'phnum_7501kd0f6gnce1ps75fwthtkmvyh',
+          toNumber: `+90${targetNumber}`
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast({
+          title: "✅ AI Arama Başlatıldı",
+          description: `Aranan Numara: +90 ${targetNumber}\nConversation ID: ${data.data.conversationId || 'N/A'}`,
+          duration: 5000
+        });
+        setShowAIModal(false);
+        setPhoneNumber('');
+      } else {
+        toast({
+          title: "❌ Arama Başlatılamadı",
+          description: data.error || data.message || 'Bilinmeyen bir hata oluştu',
+          variant: "destructive",
+          duration: 5000
+        });
+      }
+    } catch (error) {
+      console.error('AI call error:', error);
+      toast({
+        title: "❌ Bağlantı Hatası",
+        description: 'API ile bağlantı kurulamadı. Lütfen konsolu kontrol edin.',
+        variant: "destructive",
+        duration: 5000
+      });
+    } finally {
+      setAiCallLoading(false);
+    }
   };
 
   const formatDuration = (seconds) => {
@@ -174,10 +244,24 @@ const LiveCallsPage = () => {
                 <p className="text-sm text-gray-600">Tüm bayi/bireysel/kurumsal çağrıları anlık izleme</p>
               </div>
             </div>
-            <Button onClick={loadCalls} disabled={loading} variant="outline">
-              <RefreshCw className={`mr-2 ${loading ? 'animate-spin' : ''}`} size={18} />
-              Yenile
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleAICall}
+                disabled={aiCallLoading}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+              >
+                {aiCallLoading ? (
+                  <Loader2 className="mr-2 animate-spin" size={18} />
+                ) : (
+                  <Sparkles className="mr-2" size={18} />
+                )}
+                A.I. İle Arama Başlat
+              </Button>
+              <Button onClick={loadCalls} disabled={loading} variant="outline">
+                <RefreshCw className={`mr-2 ${loading ? 'animate-spin' : ''}`} size={18} />
+                Yenile
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -389,6 +473,89 @@ const LiveCallsPage = () => {
           </div>
         </div>
       )}
+
+      {/* AI Call Modal */}
+      <Dialog open={showAIModal} onOpenChange={setShowAIModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="text-purple-600" size={24} />
+              AI İle Arama Başlat
+            </DialogTitle>
+            <DialogDescription>
+              AI ile otomatik arama başlatın
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Numara Ekle Bölümü */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Numara Ekle</h3>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="bg-gray-100 px-3 py-2 rounded-md text-sm font-mono">
+                    +90
+                  </div>
+                  <Input
+                    type="text" 
+                    placeholder="5XX XXX XX XX"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="flex-1 font-mono"
+                    maxLength={13}
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  Örnek: 533 886 46 56
+                </p>
+              </div>
+
+              <Button
+                onClick={handleStartCall}
+                disabled={aiCallLoading || !phoneNumber.trim()}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+              >
+                {aiCallLoading ? (
+                  <>
+                    <Loader2 className="mr-2 animate-spin" size={16} />
+                    Arama Başlatılıyor...
+                  </>
+                ) : (
+                  <>
+                    <Phone className="mr-2" size={16} />
+                    Aramayı Başlat
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Numara Bloğu Ekle (Pasif) */}
+            <div className="space-y-3 opacity-50">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700">Numara Bloğu Ekle</h3>
+                <span className="text-xs bg-gray-200 px-2 py-1 rounded">Yakında</span>
+              </div>
+
+              <Button
+                disabled
+                variant="outline"
+                className="w-full"
+              >
+                <Phone className="mr-2" size={16} />
+                Toplu Numara Ekle
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+            <p className="font-semibold mb-1">ℹ️ Bilgilendirme</p>
+            <p>Sadece yetkili telefon numaralarını arayabilirsiniz.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -16,7 +16,6 @@ const Header = ({ onLoginClick, onContactClick }) => {
   const navItems = [
     { label: 'Ürünler', href: '/urunler' },
     { label: 'CRM Panel', href: '/voip-crm' },
-    { label: 'Geliştiriciler', href: '/gelistiriciler' },
     { label: 'Partnerler', href: '/partnerler' },
     { label: 'Kaynaklar', href: '/kaynaklar' },
     { label: 'Fiyatlandırma', href: '/fiyatlandirma' }

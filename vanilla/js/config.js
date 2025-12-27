@@ -1,8 +1,6 @@
 // Configuration
 const CONFIG = {
-    BACKEND_URL: window.location.origin.includes('localhost') 
-        ? 'http://localhost:8001' 
-        : window.location.origin,
+    BACKEND_URL: window.location.origin,
     API_PREFIX: '/api',
     APP_NAME: 'Velora Telekom',
     PHONE: '0850 000 00 00',

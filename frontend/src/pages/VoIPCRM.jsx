@@ -24,6 +24,11 @@ const VoIPCRM = () => {
   const [dealers, setDealers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [callRecords, setCallRecords] = useState([]);
+  const [sippyCDRs, setSippyCDRs] = useState([]);
+  const [loadingSippyCDRs, setLoadingSippyCDRs] = useState(false);
+  const [sippyCDRTotal, setSippyCDRTotal] = useState(0);
+  const [sippyStartDate, setSippyStartDate] = useState('');
+  const [sippyEndDate, setSippyEndDate] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [expandedDealers, setExpandedDealers] = useState(new Set());
   const [isPlaying, setIsPlaying] = useState(false);
@@ -33,6 +38,13 @@ const VoIPCRM = () => {
 
   useEffect(() => {
     loadData();
+    loadSippyCDRs();
+
+    const interval = setInterval(() => {
+      loadSippyCDRs();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
@@ -43,7 +55,7 @@ const VoIPCRM = () => {
         axios.get(`${BACKEND_URL}/api/voip-crm/customers`),
         axios.get(`${BACKEND_URL}/api/voip-crm/call-records`)
       ]);
-      
+
       setStats(statsRes.data);
       setDealers(dealersRes.data);
       setCustomers(customersRes.data);
@@ -51,6 +63,68 @@ const VoIPCRM = () => {
     } catch (error) {
       console.error('Error loading data:', error);
     }
+  };
+
+  const formatSippyUtc = (date) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const yyyy = date.getUTCFullYear();
+    const mm = pad(date.getUTCMonth() + 1);
+    const dd = pad(date.getUTCDate());
+    const hh = pad(date.getUTCHours());
+    const mi = pad(date.getUTCMinutes());
+    const ss = pad(date.getUTCSeconds());
+    return `${yyyy}${mm}${dd}T${hh}:${mi}:${ss}`;
+  };
+
+  const getUtcDayRange = (daysAgo = 0) => {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo, 0, 0, 0));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysAgo + 1, 0, 0, 0));
+    return { start: formatSippyUtc(start), end: formatSippyUtc(end) };
+  };
+
+  const loadSippyCDRs = async (override = {}) => {
+    setLoadingSippyCDRs(true);
+    try {
+      // Prefer same-origin API route (Vercel serverless / CRA proxy)
+      const baseUrl = `/api/sippy/cdrs`;
+      const params = new URLSearchParams({ limit: '1000' });
+      const start = (override.start_date ?? sippyStartDate).trim();
+      const end = (override.end_date ?? sippyEndDate).trim();
+      if (start) params.set('start_date', start);
+      if (end) params.set('end_date', end);
+      const sippyCdrsUrl = `${baseUrl}?${params.toString()}`;
+      const response = await axios.get(sippyCdrsUrl);
+      // Response format: { ok: bool, message: string, data: array, total: number }
+      if (response.data && response.data.ok && response.data.data) {
+        setSippyCDRs(response.data.data);
+        setSippyCDRTotal(Number.isFinite(Number(response.data.total)) ? Number(response.data.total) : response.data.data.length);
+      } else {
+        console.error('Sippy CDRs error:', response.data?.message || 'Unknown error');
+        setSippyCDRs([]);
+        setSippyCDRTotal(0);
+      }
+    } catch (error) {
+      console.error('Error loading Sippy CDRs:', error);
+      setSippyCDRs([]);
+      setSippyCDRTotal(0);
+    } finally {
+      setLoadingSippyCDRs(false);
+    }
+  };
+
+  const applySippyPreset = (preset) => {
+    if (preset === 'clear') {
+      setSippyStartDate('');
+      setSippyEndDate('');
+      loadSippyCDRs({ start_date: '', end_date: '' });
+      return;
+    }
+
+    const { start, end } = preset === 'today' ? getUtcDayRange(0) : getUtcDayRange(1);
+    setSippyStartDate(start);
+    setSippyEndDate(end);
+    loadSippyCDRs({ start_date: start, end_date: end });
   };
 
   const toggleDealer = (dealerId) => {
@@ -299,11 +373,81 @@ const VoIPCRM = () => {
 
         {/* Call Records & AI Analysis */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          {/* Call Records */}
+          {/* Live Call Records from SippySoft */}
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle>Çağrı Kayıtları</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Phone className="text-blue-600" size={20} />
+                    Gerçek Zamanlı Çağrı Görünümü (Live)
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {loadingSippyCDRs && (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                        Yükleniyor...
+                      </span>
+                    )}
+                    <div className="hidden md:flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applySippyPreset('today')}
+                        disabled={loadingSippyCDRs}
+                      >
+                        Bugün
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applySippyPreset('yesterday')}
+                        disabled={loadingSippyCDRs}
+                      >
+                        Dün
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => applySippyPreset('clear')}
+                        disabled={loadingSippyCDRs}
+                      >
+                        Temizle
+                      </Button>
+                    </div>
+                    <div className="hidden md:flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-gray-600">Başlangıç</Label>
+                        <Input
+                          value={sippyStartDate}
+                          onChange={(e) => setSippyStartDate(e.target.value)}
+                          placeholder="YYYYMMDDThh:mm:ss"
+                          className="h-8 w-[180px]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-gray-600">Bitiş</Label>
+                        <Input
+                          value={sippyEndDate}
+                          onChange={(e) => setSippyEndDate(e.target.value)}
+                          placeholder="YYYYMMDDThh:mm:ss"
+                          className="h-8 w-[180px]"
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium">
+                      SippySoft CDR
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={loadSippyCDRs}
+                      disabled={loadingSippyCDRs}
+                    >
+                      Yenile
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -312,24 +456,66 @@ const VoIPCRM = () => {
                       <tr>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Arayan</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Aranan</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Yön</th>
+                        <th className="text-left py-2 px-3 font-semibold text-gray-700">Durum</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Ülke/Şehir</th>
                         <th className="text-right py-2 px-3 font-semibold text-gray-700">Süre (sn)</th>
                         <th className="text-left py-2 px-3 font-semibold text-gray-700">Tarih-Saat</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {callRecords.slice(0, 10).map(record => (
-                        <tr key={record.id} className="border-t hover:bg-gray-50">
-                          <td className="py-2 px-3">{record.caller_number}</td>
-                          <td className="py-2 px-3">{record.called_number}</td>
-                          <td className="py-2 px-3">{record.country} {record.city ? `/ ${record.city}` : ''}</td>
-                          <td className="text-right py-2 px-3">{record.duration}s</td>
-                          <td className="py-2 px-3">{new Date(record.call_date).toLocaleString('tr-TR')}</td>
+                      {sippyCDRs.length > 0 ? (
+                        sippyCDRs.map((record, index) => (
+                          <tr key={record.call_id || index} className="border-t hover:bg-blue-50 transition-colors">
+                            <td className="py-2 px-3 font-medium">{record.caller}</td>
+                            <td className="py-2 px-3">{record.callee}</td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                record.direction === 'inbound'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {record.direction === 'inbound' ? 'Gelen' : 'Giden'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                record.status === 'completed' || record.status === 'ANSWERED'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {record.status}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-600">
+                              {record.country || '-'} {record.city ? `/ ${record.city}` : ''}
+                            </td>
+                            <td className="text-right py-2 px-3 font-mono">{record.duration}s</td>
+                            <td className="py-2 px-3 text-gray-600">
+                              {new Date(record.start_time).toLocaleString('tr-TR')}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="7" className="py-8 text-center text-gray-500">
+                            {loadingSippyCDRs ? 'Çağrı kayıtları yükleniyor...' : 'SippySoft\'tan çağrı kaydı bulunamadı'}
+                          </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
+                {sippyCDRs.length > 0 && (
+                  <div className="mt-4 pt-4 border-t text-sm text-gray-600">
+                    <div className="flex items-center justify-between">
+                      <span>Gösterilen: {sippyCDRs.length} / Toplam: {sippyCDRTotal}</span>
+                      <span className="text-xs text-gray-500">
+                        Son güncelleme: {new Date().toLocaleTimeString('tr-TR')}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -5,6 +5,9 @@ from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import uuid
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter(prefix="/api/voip-crm", tags=["voip-crm"])
 
@@ -95,6 +98,27 @@ class Tariff(BaseModel):
     price_per_minute: float
     currency: str = "TRY"
     description: Optional[str] = None
+
+class AutoDialerNumber(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    customer_id: str
+    phone_number: str
+    status: str = "pending"  # pending, calling, completed, failed
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    called_at: Optional[datetime] = None
+    call_result: Optional[str] = None
+
+class AutoDialerSession(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    customer_id: str
+    total_numbers: int
+    concurrent_calls: int
+    status: str = "stopped"  # running, stopped, paused
+    started_at: Optional[datetime] = None
+    stopped_at: Optional[datetime] = None
+    calls_made: int = 0
+    calls_successful: int = 0
+    calls_failed: int = 0
 
 # Dealers
 @router.post("/dealers", response_model=Dealer)
@@ -261,4 +285,181 @@ async def get_statistics():
         "active_calls": active_calls,
         "total_call_duration_minutes": total_duration / 60,
         "total_calls": total_calls
+    }
+
+# Auto Dialer Module
+@router.post("/auto-dialer/numbers", response_model=AutoDialerNumber)
+async def add_auto_dialer_number(number: AutoDialerNumber):
+    """Add a single phone number to auto dialer queue"""
+    number_dict = number.dict()
+    await db.auto_dialer_numbers.insert_one(number_dict)
+    return number
+
+@router.post("/auto-dialer/numbers/bulk")
+async def add_auto_dialer_numbers_bulk(data: dict):
+    """Add multiple phone numbers to auto dialer queue"""
+    customer_id = data.get("customer_id")
+    phone_numbers = data.get("phone_numbers", [])
+
+    if not customer_id or not phone_numbers:
+        raise HTTPException(status_code=400, detail="customer_id and phone_numbers are required")
+
+    numbers = []
+    for phone in phone_numbers:
+        number = AutoDialerNumber(
+            customer_id=customer_id,
+            phone_number=phone
+        )
+        numbers.append(number.dict())
+
+    if numbers:
+        await db.auto_dialer_numbers.insert_many(numbers)
+
+    return {"success": True, "added": len(numbers), "message": f"{len(numbers)} numara başarıyla eklendi"}
+
+@router.get("/auto-dialer/numbers", response_model=List[AutoDialerNumber])
+async def get_auto_dialer_numbers(customer_id: str):
+    """Get all phone numbers for auto dialer"""
+    numbers = await db.auto_dialer_numbers.find({"customer_id": customer_id}).to_list(10000)
+    return [AutoDialerNumber(**num) for num in numbers]
+
+@router.put("/auto-dialer/numbers/{number_id}")
+async def update_auto_dialer_number(number_id: str, data: dict):
+    """Update a phone number status in auto dialer queue"""
+    status = data.get("status")
+    call_result = data.get("call_result")
+
+    update_data = {}
+    if status:
+        update_data["status"] = status
+    if call_result:
+        update_data["call_result"] = call_result
+    if status == "calling":
+        update_data["called_at"] = datetime.utcnow()
+
+    result = await db.auto_dialer_numbers.update_one(
+        {"id": number_id},
+        {"$set": update_data}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Number not found")
+    return {"success": True, "message": "Numara güncellendi"}
+
+@router.delete("/auto-dialer/numbers/{number_id}")
+async def delete_auto_dialer_number(number_id: str):
+    """Delete a phone number from auto dialer queue"""
+    result = await db.auto_dialer_numbers.delete_one({"id": number_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Number not found")
+    return {"success": True, "message": "Numara silindi"}
+
+@router.delete("/auto-dialer/numbers/bulk/{customer_id}")
+async def delete_all_auto_dialer_numbers(customer_id: str):
+    """Delete all phone numbers for a customer"""
+    result = await db.auto_dialer_numbers.delete_many({"customer_id": customer_id})
+    return {"success": True, "deleted": result.deleted_count, "message": f"{result.deleted_count} numara silindi"}
+
+@router.post("/auto-dialer/start")
+async def start_auto_dialer(data: dict):
+    """Start auto dialer session"""
+    customer_id = data.get("customer_id")
+    concurrent_calls = data.get("concurrent_calls", 1)
+
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id is required")
+
+    # Check if there are numbers to call
+    numbers_count = await db.auto_dialer_numbers.count_documents({
+        "customer_id": customer_id,
+        "status": "pending"
+    })
+
+    if numbers_count == 0:
+        raise HTTPException(status_code=400, detail="Aranacak numara bulunamadı")
+
+    # Create or update session
+    existing_session = await db.auto_dialer_sessions.find_one({"customer_id": customer_id})
+
+    if existing_session:
+        # Update existing session
+        await db.auto_dialer_sessions.update_one(
+            {"customer_id": customer_id},
+            {
+                "$set": {
+                    "status": "running",
+                    "concurrent_calls": concurrent_calls,
+                    "total_numbers": numbers_count,
+                    "started_at": datetime.utcnow()
+                }
+            }
+        )
+    else:
+        # Create new session
+        session = AutoDialerSession(
+            customer_id=customer_id,
+            total_numbers=numbers_count,
+            concurrent_calls=concurrent_calls,
+            status="running",
+            started_at=datetime.utcnow()
+        )
+        await db.auto_dialer_sessions.insert_one(session.dict())
+
+    return {"success": True, "message": "Otomatik arama başlatıldı", "numbers_to_call": numbers_count}
+
+@router.post("/auto-dialer/stop")
+async def stop_auto_dialer(data: dict):
+    """Stop auto dialer session"""
+    customer_id = data.get("customer_id")
+
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id is required")
+
+    result = await db.auto_dialer_sessions.update_one(
+        {"customer_id": customer_id},
+        {
+            "$set": {
+                "status": "stopped",
+                "stopped_at": datetime.utcnow()
+            }
+        }
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Aktif oturum bulunamadı")
+
+    return {"success": True, "message": "Otomatik arama durduruldu"}
+
+@router.get("/auto-dialer/status/{customer_id}")
+async def get_auto_dialer_status(customer_id: str):
+    """Get current auto dialer status"""
+    session = await db.auto_dialer_sessions.find_one({"customer_id": customer_id})
+
+    pending_count = await db.auto_dialer_numbers.count_documents({
+        "customer_id": customer_id,
+        "status": "pending"
+    })
+
+    calling_count = await db.auto_dialer_numbers.count_documents({
+        "customer_id": customer_id,
+        "status": "calling"
+    })
+
+    completed_count = await db.auto_dialer_numbers.count_documents({
+        "customer_id": customer_id,
+        "status": "completed"
+    })
+
+    failed_count = await db.auto_dialer_numbers.count_documents({
+        "customer_id": customer_id,
+        "status": "failed"
+    })
+
+    return {
+        "session": AutoDialerSession(**session) if session else None,
+        "pending_calls": pending_count,
+        "calling": calling_count,
+        "completed_calls": completed_count,
+        "failed_calls": failed_count,
+        "total_numbers": pending_count + calling_count + completed_count + failed_count
     }
