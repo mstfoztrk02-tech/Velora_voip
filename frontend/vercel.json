@@ -1,3 +1,20 @@
 {
+<<<<<<< HEAD
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+=======
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://velora-voip-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/platinum/:path*",
+      "destination": "https://velora-voip-backend.onrender.com/platinum/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+>>>>>>> 9a52c04298d2839f010d3227cf811f87ed2bcc0c
 }
