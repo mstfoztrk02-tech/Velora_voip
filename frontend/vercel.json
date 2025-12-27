@@ -1,5 +1,16 @@
 {
-
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://velora-voip-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/platinum/:path*",
+      "destination": "https://velora-voip-backend.onrender.com/platinum/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
